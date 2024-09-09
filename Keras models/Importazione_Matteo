@@ -1,0 +1,96 @@
+
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+from tensorflow import keras
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.metrics  import confusion_matrix
+from sklearn.metrics  import accuracy_score
+import scipy.stats as st
+
+
+
+# Specify the example you are dealing with
+esempio = 'L_FRAME_DT'
+# Training and Testing data
+ID              = '7_1'
+save_ID         = 'Classifier_total_7_1/'
+path            = "../" + esempio + '/Dati/'
+path_data_train   = path + 'istantrain_' + ID
+path_data_test   = path + 'istantest_' + ID
+# Saving model
+path_save       = path + save_ID
+# Prediction model
+restore_ID= 'Classifier_total_7_1/'
+path_restore = path + restore_ID
+
+# Which dof monitored
+which_channels = [1,2,3,4,5,6,7,8]
+
+n_channels = 8
+seq_len = 200
+# Specify if you are using accelerations =1 or displacements =0
+accelerations = 0
+
+# Questa funzione calcola il valore quadratico medio (RMS) di un vettore di segnale, utile per misurare l'energia del segnale e per 
+# aggiungere rumore durante la corruzione dei segnali.
+def RMS(vect):
+    return np.sqrt(np.mean(np.square(vect)))
+
+# Read data and create dataset with only desired classes
+def read_data(path_data):    
+    label_path_class = path_data + '/Damage_class.csv'                                
+    labels_class     = np.genfromtxt(label_path_class)
+    labels_class     = labels_class.astype('int')
+    N_ist = len(labels_class)  
+
+    if accelerations == 1:
+        path_rec  = path_data + '/U2_concat_'
+    elif accelerations == 0:
+        path_rec  = path_data + '/U_concat_'
+
+    if path_data == path_data_train:
+        signals_means = np.zeros((n_channels))
+        signals_stds = np.zeros((n_channels))
+    else:
+        signals_means = np.load(path_restore+'\\Corrupted_signals_means.npy')
+        signals_stds = np.load(path_restore+'\\Corrupted_signals_stds.npy')
+    # Create the dataset output structure
+    X       = np.zeros((N_ist, seq_len, n_channels))   #(10000,200,8)
+    # X_noise = np.zeros((N_ist, seq_len, n_channels))
+    for i1 in range(n_channels):
+        path_data_var  = path_rec + str(which_channels[i1]) + '.csv'
+        X_singledof = pd.read_csv(path_data_var, header=None).to_numpy()[:,0]
+        for i2 in range(N_ist):
+            # RESHAPE THE SIGNALS
+            X[i2,:,i1]= X_singledof[1 + i2*(1+seq_len) : (i2+1)*(1+seq_len)]
+            # # CORRUPT THE SIGNALS
+            # rms_signal = RMS(X[i2,:,i1])
+            # dev_std    = rms_signal / np.sqrt(addedd_SNR)
+            # sample = st.norm(0, dev_std)
+            # X_noise[i2,:,i1] = X[i2,:,i1] + sample.rvs(size=seq_len)
+        if path_data == path_data_train:
+            # COMPUTE STATISTICS FOR EACH CHANNEL
+            # signals_means[i1] = np.mean(np.reshape(X_noise[:,:,i1], (N_ist*seq_len)))
+            # signals_stds[i1] = np.std(np.reshape(X_noise[:,:,i1], (N_ist*seq_len)))
+            signals_means[i1] = np.mean(np.reshape(X[:,:,i1], (N_ist*seq_len)))
+            signals_stds[i1] = np.std(np.reshape(X[:,:,i1], (N_ist*seq_len)))
+
+        # NORMALIZE THE SIGNALS    
+        # X_noise[:,:,i1] = (X_noise[:,:,i1] - signals_means[i1])/signals_stds[i1]
+        X[:,:,i1] = (X[:,:,i1] - signals_means[i1])/signals_stds[i1]
+   
+    # if path_data == path_data_train:    
+    #     np.save(path_save+'Corrupted_signals_means', signals_means)
+    #     np.save(path_save+'Corrupted_signals_stds', signals_stds)
+       
+    # return X_noise, labels_class, N_ist
+    return X, labels_class, N_ist
+
+X_train, labels_train, N_ist_train = read_data(path_data_train)
+
+print(f"Forma di X_train: {X_train.shape}")
+
+for i in range(2):  
+    print(f"Forma della {i+1}° osservazione: {X_train[i].shape}")

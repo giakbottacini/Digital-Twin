@@ -1,0 +1,235 @@
+import os
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Path alla directory dove sono salvati i file CSV
+csv_directory = "../L_FRAME_DT/Dati/istantrain_7_1/"
+ 
+# Lista dei nomi dei file CSV
+file_names = ["U_concat_1.csv", "U_concat_2.csv", "U_concat_3.csv", 
+              "U_concat_4.csv", "U_concat_5.csv", "U_concat_6.csv", 
+              "U_concat_7.csv", "U_concat_8.csv"]
+
+# Inizializza una lista per contenere i dati di ciascun sensore
+sensori_data = []
+
+# Carica ogni file CSV e aggiungi i dati alla lista
+for file_name in file_names:
+    file_path = os.path.join(csv_directory, file_name)
+    sensor_data = pd.read_csv(file_path, header=None).values.flatten()  # Converte in array numpy
+    sensori_data.append(sensor_data)
+
+# Trasponi l'array in modo che le colonne siano i sensori e le righe le osservazioni
+# Ogni colonna rappresenta un sensore, e ogni riga è una rilevazione.
+dataset = np.stack(sensori_data, axis=1)
+
+print(f"Forma di dataset: {dataset.shape}")
+
+# Trova gli indici degli zeri che separano le osservazioni
+split_indices = np.where(np.all(dataset == 0, axis=1))[0]
+
+print(f"Forma di split_indices: {split_indices.shape}")
+
+# Suddividi il dataset nelle osservazioni corrispoPrimindenti
+observations = []
+start_index = 0
+
+for end_index in split_indices:
+    if end_index > start_index:
+        observation = dataset[start_index:end_index, :]
+        if observation.shape[0] == 200:  # Assicurati che la lunghezza sia di 200 rilevazioni
+            observations.append(observation)
+    start_index = end_index + 1
+#Con questo for manca l'ultima, ora la aggiungo
+    observation = dataset[start_index:, :]
+    if observation.shape[0] == 200:  
+            observations.append(observation)
+
+# Converti la lista in un array numpy con shape (10000, 200, 8)
+observations = np.array(observations)
+
+print(f"Forma di observations: {observations.shape}")
+
+for i in range(2):  
+    print(f"Forma della {i+1}° osservazione: {observations[i].shape}")
+
+
+#Vogliamo ora normalizzare le osservazioni prima di darle in pasto al VAE
+
+# Inizializza un array per contenere i dati normalizzati
+observations_normalized = np.empty_like(observations)
+
+#MIN-MAX NORMALIZATION 
+# Calcola i minimi e massimi globali per ciascun sensore (colonna)
+min_val_global = np.min(observations, axis=(0, 1))
+max_val_global = np.max(observations, axis=(0, 1))
+
+print(f"min_val_global: {min_val_global}")
+print(f"max_val_global: {max_val_global}")
+
+# #Normalizza utilizzando i minimi e massimi globali (output in [0,1])
+# observations_normalized = (observations - min_val_global) / (max_val_global - min_val_global)
+# Normalizza utilizzando i minimi e massimi globali (output in [-1,1])
+observations_normalized = 2*(observations - min_val_global) / (max_val_global - min_val_global) - 1
+
+# #Z-SCORE NORMALIZATION (NON MI PIACE)
+# # Calcola media e deviazione standard per ciascun sensore (colonna)
+# mean_val_global = np.mean(observations, axis=(0, 1))
+# std_val_global = np.std(observations, axis=(0, 1))
+
+# print(f"mean_val_global: {mean_val_global}")
+# print(f"std_val_global: {std_val_global}")
+
+# # Normalizza utilizzando media e deviazione standard globali
+# observations_normalized = (observations - mean_val_global) / std_val_global
+
+
+print(f"Forma di observations_normalized: {observations_normalized.shape}")
+
+# print(f"Primi elementi di observations_normalized:\n{observations_normalized[:8]}")
+
+# for i in range(10):  
+#     print(f"Forma della {i+1}° osservazione normalizzata: {observations_normalized[i].shape}")
+
+# Seleziona la prima osservazione e il primo canale
+observation_original = observations[150, :, 0]
+observation_normalized = observations_normalized[150, :, 0]
+
+# Crea una figura con due sottotrame (subplots)
+plt.figure(figsize=(12, 8))
+
+# Primo subplot: grafico della serie temporale originale
+plt.subplot(2, 1, 1)
+plt.plot(observation_original, label='Originale')
+plt.title('Serie Temporale Originale')
+plt.xlabel('Time Step')
+plt.ylabel('Valore')
+plt.legend()
+
+# Secondo subplot: grafico della serie temporale normalizzata
+plt.subplot(2, 1, 2)
+plt.plot(observation_normalized, label='Normalizzata', color='orange')
+plt.title('Serie Temporale Normalizzata')
+plt.xlabel('Time Step')
+plt.ylabel('Valore Normalizzato')
+plt.legend()
+
+# Mostra la figura
+plt.tight_layout()
+plt.show()
+
+
+
+
+
+# file_names_labels = ["Amplitude.csv", "Damage_class.csv", "Damage_level.csv", "Frequency.csv"]
+
+# labels_data = []
+
+# # Carica ogni file CSV e aggiungi i dati alla lista
+# for file_name in file_names_labels:
+#     file_path = os.path.join(csv_directory, file_name)
+#     label_data = pd.read_csv(file_path, header=None).values.flatten()  # Converte in array numpy
+#     labels_data.append(label_data)
+
+# labels_data = np.array(labels_data)
+# labels_data = np.stack(labels_data, axis=1)
+
+# print(f"Forma di labels_data: {labels_data.shape}")
+
+#Importiamo i labels
+amplitude_labels = pd.read_csv(os.path.join(csv_directory, "Amplitude.csv"), header=None).values.flatten()
+damage_class_labels = pd.read_csv(os.path.join(csv_directory, "Damage_class.csv"), header=None).values.flatten()
+damage_level_labels = pd.read_csv(os.path.join(csv_directory, "Damage_level.csv"), header=None).values.flatten()
+frequency_labels = pd.read_csv(os.path.join(csv_directory, "Frequency.csv"), header=None).values.flatten()
+
+print(f"Forma di amplitude_labels: {amplitude_labels.shape}")
+
+print(amplitude_labels[0])
+
+
+
+"""
+## Creato da me, era usato in VAE_1D
+"""
+
+
+
+#DT_recordings dovrà avere dimensione (10000,200,8)
+
+# Path alla directory dove sono salvati i file CSV
+csv_directory = "../L_FRAME_DT/Dati/istantrain_7_1/"
+ 
+# Lista dei nomi dei file CSV
+file_names = ["U_concat_1.csv", "U_concat_2.csv", "U_concat_3.csv", 
+              "U_concat_4.csv", "U_concat_5.csv", "U_concat_6.csv", 
+              "U_concat_7.csv", "U_concat_8.csv"]
+
+# Inizializza una lista per contenere i dati di ciascun sensore
+sensori_data = []
+
+# Carica ogni file CSV e aggiungi i dati alla lista
+for file_name in file_names:
+    file_path = os.path.join(csv_directory, file_name)
+    sensor_data = pd.read_csv(file_path, header=None).values.flatten()  # Converte in array numpy
+    sensori_data.append(sensor_data)
+
+# Trasponi l'array in modo che le colonne siano i sensori e le righe le osservazioni
+# Ogni colonna rappresenta un sensore, e ogni riga è una rilevazione.
+dataset = np.stack(sensori_data, axis=1)
+
+print(f"Forma di dataset: {dataset.shape}")
+
+# Trova gli indici degli zeri che separano le osservazioni
+split_indices = np.where(np.all(dataset == 0, axis=1))[0]
+
+print(f"Forma di split_indices: {split_indices.shape}")
+
+# Suddividi il dataset nelle osservazioni corrispondenti
+observations = []
+start_index = 0
+
+for end_index in split_indices:
+    if end_index > start_index:
+        observation = dataset[start_index:end_index, :]
+        if observation.shape[0] == 200:  # Assicurati che la lunghezza sia di 200 rilevazioni
+            observations.append(observation)
+    start_index = end_index + 1
+#Con questo for manca l'ultima, ora la aggiungo
+    observation = dataset[start_index:, :]
+    if observation.shape[0] == 200:  
+            observations.append(observation)
+
+# Converti la lista in un array numpy con shape (10000, 200, 8)
+observations = np.array(observations)
+
+print(f"Forma di observations: {observations.shape}")
+
+for i in range(2):  
+    print(f"Forma della {i+1}° osservazione: {observations[i].shape}")
+
+
+#Vogliamo ora normalizzare le osservazioni prima di darle in pasto al VAE
+
+# Inizializza un array per contenere i dati normalizzati
+observations_normalized = np.empty_like(observations)
+
+# Calcola i minimi e massimi globali per ciascun sensore (colonna)
+min_val_global = np.min(observations, axis=(0, 1))
+max_val_global = np.max(observations, axis=(0, 1))
+
+# print(f"min_val_global: {min_val_global}")
+# print(f"max_val_global: {max_val_global}")
+
+# Normalizza utilizzando i minimi e massimi globali (output in [0,1])
+observations_normalized = (observations - min_val_global) / (max_val_global - min_val_global)
+# # Normalizza utilizzando i minimi e massimi globali (output in [-1,1])
+# observations_normalized = 2*(observations - min_val_global) / (max_val_global - min_val_global) - 1
+
+print(f"Forma di observations_normalized: {observations_normalized.shape}")
+
+# print(f"Primi elementi di observations_normalized:\n{observations_normalized[:2]}")
+
+# for i in range(2):  
+#     print(f"Forma della {i+1}° osservazione normalizzata: {observations_normalized[i].shape}")

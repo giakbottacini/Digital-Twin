@@ -1,0 +1,221 @@
+# SHM_classifier_keras
+
+# Author: Matteo Torzoni
+
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+from tensorflow import keras
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from keras import layers
+from keras import regularizers
+from keras import losses
+from sklearn.metrics  import confusion_matrix
+from sklearn.metrics  import accuracy_score
+import scipy.stats as st
+
+keras.backend.clear_session()
+
+# Specify the example you are dealing with
+esempio = 'L_FRAME_DT'
+# Training and Testing data
+ID              = '7_1'
+save_ID         = 'Classifier_total_7_1\\'
+path            = 'D:\\Users\\Matteo\\Corigliano\\' + esempio + '\\Dati\\'
+path_data_train   = path + 'istantrain_' + ID
+path_data_test   = path + 'istantest_' + ID
+# Saving model
+path_save       = path + save_ID
+# Prediction model
+restore_ID= 'Classifier_total_7_1\\'
+path_restore = path + restore_ID
+
+plt.rcParams["font.family"] = "Times New Roman"
+plt.rcParams["mathtext.fontset"] = "cm"
+plt.rc('font', size=24)          # controls default text sizes
+plt.rc('axes', titlesize=24)     # fontsize of the axes title
+plt.rc('axes', labelsize=24)    # fontsize of the x and y labels
+plt.rc('xtick', labelsize=24)    # fontsize of the tick labels
+plt.rc('ytick', labelsize=24)    # fontsize of the tick labels
+plt.rc('legend', fontsize=24)    # legend fontsize
+plt.rc('figure', titlesize=24)  # fontsize of the figure title
+
+# ----------------------------------------------------------------------------
+
+# Specify if you want to train the net or use it to make predictions (0-predict ; 1-train)
+predict_or_train = 0
+# Number of monitored channels
+n_channels     = 8
+# Which dof monitored
+which_channels = [1,2,3,4,5,6,7,8]
+# Number of classes in the dataset
+n_class = 8
+# Specify if you are using accelerations =1 or displacements =0
+accelerations = 0
+seq_len = 200
+addedd_SNR = 100
+
+# Hyperparameters
+validation_split = 0.20
+batch_size = 32
+n_epochs = 250
+early_stop_epochs=15
+initial_lr = 1e-3
+decay_length = 0.8
+ratio_to_stop = 0.05
+
+filter_1      = 32;   filter_2      = 64;   filter_3      = 32
+kernel_size_1 = 25;   kernel_size_2 =  13;   kernel_size_3 = 7
+neurons_4 = 64
+neurons_5 = 16
+attivaz_conv = 'tanh'
+attivaz_mlp = 'tanh'
+k_reg = 1e-3
+b_reg = 1e-3
+rate_drop = 0.05
+
+# ----------------------------------------------------------------------------
+
+def RMS(vect):
+    return np.sqrt(np.mean(np.square(vect)))
+
+# Read data and create dataset with only desired classes
+def read_data(path_data):    
+    label_path_class = path_data + '\\Damage_class.csv'                                
+    labels_class     = np.genfromtxt(label_path_class)
+    labels_class     = labels_class.astype('int')
+    N_ist = len(labels_class)  
+    if accelerations == 1:
+        path_rec  = path_data + '\\U2_concat_'
+    elif accelerations == 0:
+        path_rec  = path_data + '\\U_concat_'
+    if path_data == path_data_train:
+        signals_means = np.zeros((n_channels))
+        signals_stds = np.zeros((n_channels))
+    else:
+        signals_means = np.load(path_restore+'\\Corrupted_signals_means.npy')
+        signals_stds = np.load(path_restore+'\\Corrupted_signals_stds.npy')
+    # Create the dataset output structure
+    X       = np.zeros((N_ist, seq_len, n_channels))
+    X_noise = np.zeros((N_ist, seq_len, n_channels))
+    for i1 in range(n_channels):
+        path_data_var  = path_rec + str(which_channels[i1]) + '.csv'
+        X_singledof = pd.read_csv(path_data_var, header=None).to_numpy()[:,0]
+        for i2 in range(N_ist):
+            # RESHAPE THE SIGNALS
+            X[i2,:,i1]= X_singledof[1 + i2*(1+seq_len) : (i2+1)*(1+seq_len)]
+            # CORRUPT THE SIGNALS
+            rms_signal = RMS(X[i2,:,i1]);
+            dev_std    = rms_signal / np.sqrt(addedd_SNR);
+            sample = st.norm(0, dev_std)
+            X_noise[i2,:,i1] = X[i2,:,i1] + sample.rvs(size=seq_len)
+        if path_data == path_data_train:
+            # COMPUTE STATISTICS FOR EACH CHANNEL
+            signals_means[i1] = np.mean(np.reshape(X_noise[:,:,i1], (N_ist*seq_len)))
+            signals_stds[i1] = np.std(np.reshape(X_noise[:,:,i1], (N_ist*seq_len)))
+        # NORMALIZE THE SIGNALS    
+        X_noise[:,:,i1] = (X_noise[:,:,i1] - signals_means[i1])/signals_stds[i1]
+   
+    if path_data == path_data_train:    
+        np.save(path_save+'Corrupted_signals_means', signals_means)
+        np.save(path_save+'Corrupted_signals_stds', signals_stds)
+       
+    return X_noise, labels_class, N_ist
+
+
+if predict_or_train:
+    try:
+        os.mkdir(path_save)
+    except:
+        print('ERRORE: La cartella esiste già')
+   
+    X_train, labels_train, N_ist_train = read_data(path_data_train)
+
+    input_series  = layers.Input(shape=(seq_len, n_channels), name='Convolutional_inputs')
+
+    x = layers.Conv1D(filters=filter_1, kernel_size=kernel_size_1, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_1')(input_series)
+    x = layers.MaxPooling1D()(x)
+    x = layers.Dropout(rate=rate_drop)(x)
+    x = layers.Conv1D(filters=filter_2, kernel_size=kernel_size_2, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_2')(x)
+    x = layers.MaxPooling1D()(x)
+    x = layers.Dropout(rate=rate_drop)(x)
+    x = layers.Conv1D(filters=filter_3, kernel_size=kernel_size_3, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_3')(x)
+    x = layers.MaxPooling1D()(x)
+    x = layers.Dropout(rate=rate_drop)(x)
+    x = layers.Flatten()(x)
+    x = layers.Dense(units=neurons_4, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Dense_1')(x)
+    x = layers.Dense(units=neurons_5, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Dense_2')(x)
+    Class_output    = layers.Dense(n_class,activation=keras.activations.softmax,kernel_regularizer=regularizers.l2(k_reg),bias_regularizer=regularizers.l2(b_reg),name='Dense_3_with_Softmax')(x)
+    # Dopo l'ultimo strato Dense con softmax, otteniamo un vettore di output di dimensione 8 (una probabilità per ciascuna classe). Il modello selezionerà la classe con la probabilità più alta come previsione finale.
+    Classifier = keras.models.Model(input_series, Class_output, name='FCN_classifier')
+   
+    Classifier.summary()
+
+    Classifier.compile(optimizer = keras.optimizers.Adam(learning_rate=keras.optimizers.schedules.CosineDecay(initial_learning_rate=initial_lr, decay_steps=int(decay_length*n_epochs*N_ist_train*(1-validation_split)/batch_size), alpha=ratio_to_stop)),
+                       loss=losses.sparse_categorical_crossentropy,
+                       metrics=['accuracy'])
+
+    early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=early_stop_epochs, restore_best_weights=1)
+
+    history = Classifier.fit(X_train,
+                             labels_train,
+                             epochs=n_epochs,
+                             batch_size=batch_size,
+                             validation_split=validation_split,
+                             verbose=2,
+                             callbacks=[early_stop])
+   
+    hist = pd.DataFrame(history.history)
+    hist['epoch'] = history.epoch
+    hist.tail()
+    hist.to_pickle(path_save + 'hist.pkl')
+    Classifier.save(path_save + 'model')
+   
+else:
+    X_test,  labels_test, N_ist_test  = read_data(path_data_test)
+    Classifier = keras.models.load_model(path_restore + 'model')
+    keras.utils.plot_model(Classifier, to_file=path_save + 'Damage_classifier.pdf', show_shapes=True)
+    hist = pd.read_pickle(path_restore + 'hist.pkl')
+    labels_pred = Classifier.predict(X_test)
+    labels_pred = np.argmax(labels_pred,axis=1)
+
+    overall_accuracy = accuracy_score(labels_test, labels_pred)
+    print(overall_accuracy)
+   
+    # Confusion matrix: C(i,j) equal to the number of observations known to be in group i and predicted to be in group j.
+    conf_matrix = confusion_matrix(labels_test,labels_pred)
+    row_sums    = conf_matrix.sum(axis=1, keepdims=True)
+    norm_conf_matrix = conf_matrix / row_sums
+    norm_conf_matrix = np.around(norm_conf_matrix, decimals=2)
+   
+    np.savetxt(path_restore + 'Confuzion' + '.csv', conf_matrix, delimiter=",")
+    np.savetxt(path_restore + 'Confuzion_Norm' + '.csv', norm_conf_matrix, delimiter=",")
+   
+    A1 = hist.val_loss.min()
+    A2 = hist.val_accuracy.max()
+    A3 = overall_accuracy
+    print(A1, A2, A3)
+    print(max(hist.epoch))
+   
+plt.figure(figsize = (9,6.2),dpi=100)
+plt.plot(1+hist.epoch, hist.loss, 'goldenrod', linewidth=2)
+plt.plot(1+hist.epoch, hist.val_loss, 'k:', linewidth=1)
+plt.ylabel('Loss')
+plt.xlabel('Epoch')
+plt.legend(['Training set', 'Validation set'], loc='upper right')
+# plt.ylim(0.0001, 1)
+# plt.xlim(1, 200)
+plt.savefig(path_save + 'Loss.pdf', bbox_inches='tight')
+plt.show()
+
+plt.figure(figsize = (9,6.2),dpi=100)
+plt.plot(1+hist.epoch, hist.accuracy, 'goldenrod', linewidth=2)
+plt.plot(1+hist.epoch, hist.val_accuracy, 'k:', linewidth=1)
+plt.ylabel('Accuracy')
+plt.xlabel('Epoch')
+# plt.ylim(0.0001, 1)
+# plt.xlim(1, 200)
+plt.savefig(path_save + 'Acc.pdf', bbox_inches='tight')
+plt.show() 
+

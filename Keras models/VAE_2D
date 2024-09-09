@@ -1,0 +1,248 @@
+"""
+Title: Variational AutoEncoder
+Author: [fchollet](https://twitter.com/fchollet)
+Date created: 2020/05/03
+Last modified: 2024/04/24
+Description: Convolutional Variational AutoEncoder (VAE) trained on MNIST digits.
+Accelerator: GPU
+"""
+
+"""
+## Setup
+"""
+
+import os
+
+os.environ["KERAS_BACKEND"] = "tensorflow"   #Imposta l'ambiente Keras per usare TensorFlow come backend.
+
+import numpy as np
+import tensorflow as tf
+import keras
+from keras import ops
+from keras import layers
+
+"""
+## Create a sampling layer
+"""
+
+
+class Sampling(layers.Layer):    #Calcola una variabile latente z campionata dall distribuzione normale con media z_mean e deviazione standard data da z_log_var ottenute dall'encoder. Questo permette di campionare dallo spazio latente per la generazione di nuove istanze.
+    """Uses (z_mean, z_log_var) to sample z, the vector encoding a digit."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.seed_generator = keras.random.SeedGenerator(1337)
+
+    def call(self, inputs):
+        z_mean, z_log_var = inputs
+        batch = ops.shape(z_mean)[0]   #batch = numero di campioni (o input) processati simultaneamente dal modello durante una singola iterazione (nel nostro caso batch_size=128)
+        dim = ops.shape(z_mean)[1]     #dim = numero di unità nel vettore latente z_mean, che è la dimensione dello spazio latente in cui i dati vengono proiettati (nel nostro caso latent_dim=2)
+        epsilon = keras.random.normal(shape=(batch, dim), seed=self.seed_generator)   #epsilon ha stessa dimensione di z_mean
+        return z_mean + ops.exp(0.5 * z_log_var) * epsilon    #Per campionsare utilizza Reparametrization Trick poichè altrimenti il sampling non permetterebbe la backpropagation.
+
+
+"""
+## Build the encoder
+"""
+
+latent_dim = 2
+
+encoder_inputs = keras.Input(shape=(28, 28, 1))     #Input Layer: Accetta immagini di dimensione 28x28 con un solo canale (bianco e nero).
+#There are 2 Convolutional Layers
+x = layers.Conv2D(32, 3, activation="relu", strides=2, padding="same")(encoder_inputs)  
+    #32: Questo parametro specifica il numero di filtri convoluzionali che verranno applicati all'input. Ogni filtro produrrà una feature map. Quindi, il risultato di questa operazione sarà un tensore con 32 canali di output.
+    #3: Questo parametro rappresenta la dimensione della finestra del kernel di convoluzione (la matrice utilizzata per convolvere l'immagine). In questo caso, il kernel è di dimensione 3x3, il che significa che la convoluzione analizzerà piccoli blocchi di 3x3 pixel alla volta.
+    #activation="relu": Specifica la funzione di attivazione da applicare all'output della convoluzione. La funzione ReLU sostituisce i valori negativi con zero (i positivi non cambiano), introducendo non linearità e aiutando la rete a imparare rappresentazioni complesse.
+    #strides=2: Indica di quanti pixel la finestra di convoluzione si muove tra una convoluzione e l'altra. Con strides=2, la finestra si sposta di 2 pixel alla volta, il che riduce la dimensione spaziale dell'output rispetto all'input. Questo processo è noto come downsampling o sottocampionamento.
+    #padding="same": Determina come trattare i bordi dell'immagine durante la convoluzione. Con padding="same", l'output avrà la stessa dimensione spaziale dell'input, poiché Keras aggiunge zeri attorno ai bordi dell'input
+    #x: L'output di questa operazione è una nuova "immagine" chiamata mappa delle caratteristiche (feature map), che ha una dimensione spaziale ridotta (14x14 pixel) e un numero di canali aumentato (32 canali, uno per ogni filtro). Quindi ogni filtro produce un' "immagine" 14x14
+
+x = layers.Conv2D(64, 3, activation="relu", strides=2, padding="same")(x) 
+    #Ognuno dei 64 filtri estrae caratteristiche dalla combinazione di tutti i 32 canali dell'input e produce un'unica mappa di caratteristiche (o canale di output) di dimensione 14x14
+
+x = layers.Flatten()(x)         #Il layer Flatten trasforma l'input di forma (7, 7, 64) (se escludiamo il batch size) in un vettore di dimensione 3136 (7*7*64). Questo vettore contiene tutte le informazioni delle mappe delle caratteristiche, ma in una forma che può essere utilizzata dai layer successivi, tipicamente un layer denso (Dense), per la classificazione o altre operazioni.
+x = layers.Dense(16, activation="relu")(x)  #Applica un layer completamente connesso con 16 neuroni e funzione di attivazione relu all'input x. Questo trasforma i dati da una rappresentazione a una dimensione in un'altra rappresentazione con 16 dimensioni, introducendo non linearità tramite la funzione di attivazione.
+z_mean = layers.Dense(latent_dim, name="z_mean")(x)
+z_log_var = layers.Dense(latent_dim, name="z_log_var")(x)
+    #Il vettore z_mean e z_log_var avranno dimensione (batch_size, latent_dim)
+
+z = Sampling()([z_mean, z_log_var])           #Sampling Layer: Usa z_mean e z_log_var per campionare il vettore latente z.
+encoder = keras.Model(encoder_inputs, [z_mean, z_log_var, z], name="encoder")
+    #[z_mean, z_log_var, z] sono i tensori di output del modello. 
+
+encoder.summary()
+
+"""
+## Build the decoder  
+"""
+
+#Il decoder è una rete neurale che prende come input un campione dalla distribuzione latente (generato dall’encoder) e cerca di ricostruire il dato originale. 
+
+latent_inputs = keras.Input(shape=(latent_dim,))     #Input Layer: Accetta vettori latenti di dimensione latent_dim (cioè gli z campionati).
+x = layers.Dense(7 * 7 * 64, activation="relu")(latent_inputs)    #Dense & Reshape Layers: Mappa il vettore latente a una forma spaziale di 7x7x64.
+x = layers.Reshape((7, 7, 64))(x)
+
+#Convolutional Transpose Layers: Espande la dimensione spaziale dell'immagine #e riduce il numero di filtri fino a ottenere un'immagine di dimensione 28x28 con un solo canale.
+x = layers.Conv2DTranspose(64, 3, activation="relu", strides=2, padding="same")(x)    
+    #Convoluzione Trasposta: Il layer applica 64 filtri 3x3 sulla feature map di input, e poiché strides=2, l'output sarà upsampled, raddoppiando generalmente la dimensione spaziale (es. da 7x7 a 14x14).
+    #Attivazione ReLU: L'output della convoluzione trasposta passa attraverso la funzione di attivazione ReLU.
+    #Output: L'output finale di questo layer è una feature map con dimensioni spaziali più grandi rispetto all'input (es. da 7x7 a 14x14 se strides=2) e 64 canali.
+
+x = layers.Conv2DTranspose(32, 3, activation="relu", strides=2, padding="same")(x)    
+decoder_outputs = layers.Conv2DTranspose(1, 3, activation="sigmoid", padding="same")(x)  #Output Layer: Usa una funzione di attivazione sigmoidale per produrre valori tra 0 e 1 (in scala di grigi, come l'input), come le immagini normalizzate.
+    # Viene applicato un singolo filtro alla feature map in input. Questo significa che l'output avrà un solo canale, ovvero sarà un'immagine in scala di grigi.
+    #Il parametro strides non è specificato, quindi per default è 1. Non si fa nessun upsampling aggiuntivo, l'output avrà la stessa dimensione spaziale dell'input.
+
+decoder = keras.Model(latent_inputs, decoder_outputs, name="decoder")
+decoder.summary()
+
+"""
+## Define the VAE as a `Model` with a custom `train_step`
+"""
+
+
+class VAE(keras.Model):
+    def __init__(self, encoder, decoder, **kwargs):    #Inizializzazione: Salva i modelli encoder e decoder e crea i tracker per le metriche di perdita.
+        super().__init__(**kwargs)    #si assicura che il costruttore di keras.Model (classe madre) venga chiamato con tutti i parametri necessari, e che l'inizializzazione di VAE possa aggiungere ulteriori comportamenti o attributi.
+        self.encoder = encoder
+        self.decoder = decoder
+        self.total_loss_tracker = keras.metrics.Mean(name="total_loss")  #keras.metrics.Mean è una funzione di Keras che crea un'istanza della classe Mean. Questa classe calcola la media (mean) di un valore che le viene fornito.
+            #In un Variational Autoencoder (VAE), la perdita totale è la somma della reconstruction loss e della KL divergence loss.
+            #Utilizzando keras.metrics.Mean, puoi tracciare la media di questa perdita totale su un intero batch di dati o su un'intera epoca. Questo è importante perché la perdita potrebbe variare durante l'addestramento, e la media fornisce un'idea più stabile e rappresentativa delle prestazioni del modello nel tempo.
+
+        self.reconstruction_loss_tracker = keras.metrics.Mean(
+            name="reconstruction_loss"
+        )
+        self.kl_loss_tracker = keras.metrics.Mean(name="kl_loss")
+
+    @property     #Il decoratore @property trasforma un metodo della classe in una proprietà (attributo) della classe stessa. Ciò significa che puoi accedere a questo metodo come se fosse un attributo, senza bisogno di chiamarlo con le parentesi ().
+    def metrics(self):
+        return [      #Questo metodo è definito come una property della classe e restituisce una lista di metriche tracciate dal modello.
+            self.total_loss_tracker,
+            self.reconstruction_loss_tracker,
+            self.kl_loss_tracker,
+        ]
+
+    def train_step(self, data):
+        with tf.GradientTape() as tape:
+            z_mean, z_log_var, z = self.encoder(data)     #Calcola z_mean, z_log_var e z utilizzando l'encoder.
+            reconstruction = self.decoder(z)              #Genera le ricostruzioni usando il decoder.
+
+            reconstruction_loss = ops.mean(               #Calcola singolo valore che rappresenta la perdita media di ricostruzione per l'intero batch.
+                ops.sum(    #Sum over axis 1 e 2
+                    keras.losses.binary_crossentropy(data, reconstruction),  #Calcola la perdita di entropia incrociata binaria tra i dati originali (data) e i dati ricostruiti (reconstruction). Ritorna un array che rappresenta l'errore per ogni singolo pixel dell'immagine.
+                    axis=(1, 2),   #Questa somma aggrega l'errore per tutti i pixel di ciascuna immagine, ottenendo un singolo valore di errore per ogni immagine nel batch.
+                )
+            )
+
+            kl_loss = -0.5 * (1 + z_log_var - ops.square(z_mean) - ops.exp(z_log_var))  #Corrisponde alla formula semplificata per la KL divergence tra due distribuzioni normali.
+            kl_loss = ops.mean(ops.sum(kl_loss, axis=1))
+            
+            total_loss = reconstruction_loss + kl_loss
+
+        grads = tape.gradient(total_loss, self.trainable_weights)      #Calcola i gradienti della funzione di perdita totale (total_loss) rispetto ai pesi addestrabili del modello (self.trainable_weights).
+        self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
+            #Il comando zip combina i gradienti con i corrispondenti pesi del modello in coppie.
+            #apply_gradients utilizza queste coppie per aggiornare i pesi con l'algoritmo di ottimizzazione scelto (ad esempio, Adam, SGD, ecc.).
+
+        self.total_loss_tracker.update_state(total_loss)    #update_state: aggiorna la media mobile del valore della total_loss, ovvero mantiene traccia della perdita totale nel corso delle epoche.
+        self.reconstruction_loss_tracker.update_state(reconstruction_loss)
+        self.kl_loss_tracker.update_state(kl_loss)
+        return {
+            "loss": self.total_loss_tracker.result(),
+            "reconstruction_loss": self.reconstruction_loss_tracker.result(),
+            "kl_loss": self.kl_loss_tracker.result(),
+        }
+
+
+"""
+## Train the VAE
+"""
+
+(x_train, _), (x_test, _) = keras.datasets.mnist.load_data()   #Carica il dataset MNIST e normalizza le immagini.
+mnist_digits = np.concatenate([x_train, x_test], axis=0)   #mnist_digits: Un unico array che contiene tutte le immagini di x_train seguite da tutte le immagini di x_test.
+mnist_digits = np.expand_dims(mnist_digits, -1).astype("float32") / 255    #Se mnist_digits aveva forma (70000, 28, 28), ora avrà forma (70000, 28, 28, 1). L'aggiunta di una dimensione di canale esplicita rende il formato compatibile con i modelli che si aspettano un input a 4 dimensioni
+                                                                           #/255 scala tutti i valori dei pixel per essere compresi tra 0 e 1. Le reti neurali tendono a performare meglio e convergere più velocemente quando gli input sono normalizzati.
+
+vae = VAE(encoder, decoder)    #Qui viene istanziato un oggetto della classe VAE, che rappresenta un modello di tipo Variational Autoencoder.
+vae.compile(optimizer=keras.optimizers.Adam())  #Specifica l'ottimizzatore che sarà utilizzato durante l'addestramento.
+vae.fit(mnist_digits, epochs=30, batch_size=128)   #Questo comando avvia l'addestramento del modello VAE usando il dataset mnist_digits.
+    #epochs=30: Indica che l'addestramento del modello si svolgerà per 30 epoche. Un'epoca consiste in una passata completa di tutti i campioni di addestramento attraverso il modello.
+    #batch_size=128: Durante l'addestramento, il dataset sarà diviso in batch di 128 immagini. L'aggiornamento dei pesi del modello avviene dopo ogni batch (non dopo ogni singolo campione).
+
+"""
+## Display a grid of sampled digits
+"""
+
+import matplotlib.pyplot as plt
+
+
+def plot_latent_space(vae, n=30, figsize=15):      #La funzione plot_latent_space visualizza come appaiono i numeri nello spazio latente di un Variational Autoencoder (VAE). 
+        #vae: Il modello VAE addestrato.
+        #n: Il numero di punti lungo ciascun asse della griglia. La griglia finale avrà dimensioni n x n.
+        #figsize: La dimensione della figura da visualizzare.  
+        #Quindi otterrò una griglia 28x28 di immagini che avranno dimensione 15
+
+    # display a n*n 2D manifold of digits
+    digit_size = 28    #digit_size: La dimensione di ciascun numero o immagine, ovvero 28x28 pixel (MNIST).
+    scale = 1.0    #Definisce l'intervallo di valori (da -scale a scale) per i punti che saranno campionati nello spazio latente.
+    figure = np.zeros((digit_size * n, digit_size * n))    #Crea una matrice vuota che rappresenta l'immagine finale, cioè la griglia 2D di tutte le cifre generate. La dimensione della matrice sarà digit_size * n per digit_size * n (in questo caso, 840x840 pixel se n=30 e digit_size=28).
+    # linearly spaced coordinates corresponding to the 2D plot
+    # of digit classes in the latent space
+    grid_x = np.linspace(-scale, scale, n)   #Genera n valori equidistanti lungo l'asse x (orizzontale) della griglia, tra -scale e scale.
+    grid_y = np.linspace(-scale, scale, n)[::-1]   #Genera n valori equidistanti lungo l'asse y (verticale) della griglia, tra -scale e scale, ma invertiti. L'inversione ([::-1]) è fatta per avere l'origine in basso a sinistra.
+
+    for i, yi in enumerate(grid_y):    #Questo ciclo annidato attraversa ogni punto della griglia 2D, generando cifre per ciascun punto.
+        for j, xi in enumerate(grid_x):
+            z_sample = np.array([[xi, yi]])  #Crea una coppia di coordinate (xi, yi) come un array 2D, rappresentante un punto nello spazio latente.
+            x_decoded = vae.decoder.predict(z_sample, verbose=0)   #Usa il decodificatore del VAE per generare un'immagine (cifra) a partire dal punto latente z_sample.
+            digit = x_decoded[0].reshape(digit_size, digit_size)   #Converte l'output del decodificatore (che è un array) in un'immagine 2D di dimensioni digit_size x digit_size.
+            figure[
+                i * digit_size : (i + 1) * digit_size,   #Inserisce l'immagine generata nel suo posto corrispondente all'interno della griglia principale figure.
+                j * digit_size : (j + 1) * digit_size,
+            ] = digit
+
+    plt.figure(figsize=(figsize, figsize))
+    start_range = digit_size // 2
+    end_range = n * digit_size + start_range
+    pixel_range = np.arange(start_range, end_range, digit_size)
+    sample_range_x = np.round(grid_x, 1)
+    sample_range_y = np.round(grid_y, 1)
+    plt.xticks(pixel_range, sample_range_x)
+    plt.yticks(pixel_range, sample_range_y)
+    plt.xlabel("z[0]")
+    plt.ylabel("z[1]")
+    plt.imshow(figure, cmap="Greys_r")
+    plt.show()
+
+#In Sintesi
+#Questa funzione genera una visualizzazione delle cifre (numeri) che il VAE produce da una griglia di punti campionati nello spazio latente. È utile per esplorare 
+# come lo spazio latente appreso dal VAE rappresenta le diverse cifre.
+
+
+plot_latent_space(vae)
+
+"""
+## Display how the latent space clusters different digit classes
+"""
+
+#La funzione plot_label_clusters visualizza un grafico 2D delle classi di cifre (digits) nello spazio latente (prende la loro media), mostrando come i vari digit 
+# (ad esempio, i numeri  da 0 a 9) si raggruppano in tale spazio. Questo aiuta a capire come il modello VAE separa e rappresenta le diverse classi nel suo spazio latente.
+def plot_label_clusters(vae, data, labels):   
+        #vae: Il modello VAE addestrato.
+        #data: Il set di dati delle immagini (cifre) che vuoi visualizzare nello spazio latente.
+        #labels: Le etichette associate a ciascuna immagine nel set di dati (ad esempio, quale numero rappresenta ogni immagine).
+
+    z_mean, _, _ = vae.encoder.predict(data, verbose=0)  # Passa il set di dati data attraverso l'encoder del VAE per ottenere le coordinate nello spazio latente.
+    plt.figure(figsize=(12, 10))
+    plt.scatter(z_mean[:, 0], z_mean[:, 1], c=labels)
+    plt.colorbar()
+    plt.xlabel("z[0]")
+    plt.ylabel("z[1]")
+    plt.show()
+
+
+(x_train, y_train), _ = keras.datasets.mnist.load_data()   #x_train: immagini   #y_train: labels
+x_train = np.expand_dims(x_train, -1).astype("float32") / 255
+
+plot_label_clusters(vae, x_train, y_train)

@@ -1,0 +1,137 @@
+import os
+os.environ["KERAS_BACKEND"] = "tensorflow"
+
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+from tensorflow.keras import regularizers
+from sklearn.datasets import make_moons
+import numpy as np
+import matplotlib.pyplot as plt
+import tensorflow_probability as tfp
+import pandas as pd
+
+"""
+## Importazione un singolo sensore
+"""
+
+# Path alla directory dove sono salvati i file CSV
+csv_directory = "../L_FRAME_DT/Dati/istantrain_7_1/"
+ 
+# Lista dei nomi dei file CSV
+file_name = "U_concat_1.csv"
+
+# Inizializza una lista per contenere i dati di ciascun sensore
+sensori_data = []
+
+# Carica il file CSV
+file_path = os.path.join(csv_directory, file_name)
+sensor_data = pd.read_csv(file_path, header=None).values.flatten()  # Converte in array numpy
+sensori_data.append(sensor_data)
+
+# Trasponi l'array in modo che le colonne siano i sensori e le righe le osservazioni
+# Ogni colonna rappresenta un sensore, e ogni riga è una rilevazione.
+dataset = np.stack(sensori_data, axis=1)
+
+print(f"Forma di dataset: {dataset.shape}")
+
+# Trova gli indici degli zeri che separano le osservazioni
+split_indices = np.where(np.all(dataset == 0, axis=1))[0]
+
+print(f"Forma di split_indices: {split_indices.shape}")
+
+# Suddividi il dataset nelle osservazioni corrispoPrimindenti
+observations = []
+start_index = 0
+
+for end_index in split_indices:
+    if end_index > start_index:
+        observation = dataset[start_index:end_index, :]
+        if observation.shape[0] == 200:  # Assicurati che la lunghezza sia di 200 rilevazioni
+            observations.append(observation)
+    start_index = end_index + 1
+#Con questo for manca l'ultima, ora la aggiungo
+    observation = dataset[start_index:, :]
+    if observation.shape[0] == 200:  
+            observations.append(observation)
+
+# Converti la lista in un array numpy con shape (10000, 200, 8)
+observations = np.array(observations)
+
+data = observations.squeeze()
+
+print(f"Forma di observations: {observations.shape}")
+
+for i in range(2):  
+    print(f"Forma della {i+1}° osservazione: {observations[i].shape}")
+
+
+
+# Dividiamo il dataset in dataset_1 (prime 8000 osservazioni) e dataset_2 (ultime 2000 osservazioni)
+data_1 = data[:8000]
+data_2 = data[8000:]
+
+# Stampa le forme dei due sottoinsiemi
+print(f"Forma di dataset_1: {data_1.shape}")  # Dovrebbe essere (8000, 200, 8)
+print(f"Forma di dataset_2: {data_2.shape}")  # Dovrebbe essere (2000, 200, 8)
+
+# Normalizzazione sui due dataset
+norm_1 = layers.Normalization()
+norm_2 = layers.Normalization()
+
+# Adattamento dei layer di normalizzazione sui rispettivi dataset
+norm_1.adapt(data_1)
+norm_2.adapt(data_2)
+
+# Normalizza i dataset
+normalized_dataset_1 = norm_1(data_1)
+normalized_dataset_2 = norm_2(data_2)
+
+# Controllo delle forme
+print(f"Forma di normalized_dataset_1: {normalized_dataset_1.shape}")
+print(f"Forma di normalized_dataset_2: {normalized_dataset_2.shape}")
+
+
+
+
+# #Normalizzazione
+# norm = layers.Normalization()  
+# norm.adapt(data)  
+# normalized_data = norm(data)
+
+# print(f"Forma di normalized_data: {normalized_data.shape}")
+
+
+# # Controllo delle statistiche prima della normalizzazione
+# print("Statistiche prima della normalizzazione:")
+# print(f"Media di tutte le feature: {np.mean(data, axis=0)[:5]} (prime 5 feature)")
+# print(f"Deviazione standard di tutte le feature: {np.std(data, axis=0)[:5]} (prime 5 feature)")
+
+# # Controllo delle statistiche dopo la normalizzazione
+# print("\nStatistiche dopo la normalizzazione:")
+# print(f"Media di tutte le feature normalizzate: {np.mean(normalized_data, axis=0)[:5]} (prime 5 feature)")
+# print(f"Deviazione standard di tutte le feature normalizzate: {np.std(normalized_data, axis=0)[:5]} (prime 5 feature)")
+
+# # Controllo grafico prima e dopo la normalizzazione (distribuzione delle feature)
+# feature_index = 20  # Scegliamo una feature specifica da analizzare
+
+# plt.figure(figsize=(14, 6))
+
+# # Prima della normalizzazione
+# plt.subplot(1, 2, 1)
+# plt.hist(data[:, feature_index], bins=30, color='blue', alpha=0.7)
+# plt.title(f"Feature {feature_index+1} - Prima della normalizzazione")
+# plt.xlabel('Valore')
+# plt.ylabel('Frequenza')
+
+# # Dopo la normalizzazione
+# plt.subplot(1, 2, 2)
+# plt.hist(normalized_data[:, feature_index], bins=30, color='green', alpha=0.7)
+# plt.title(f"Feature {feature_index+1} - Dopo la normalizzazione")
+# plt.xlabel('Valore')
+# plt.ylabel('Frequenza')
+
+# plt.tight_layout()
+# plt.show()
+
+
