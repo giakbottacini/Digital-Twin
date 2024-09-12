@@ -1,0 +1,2 @@
+# Non tracciare file .h5, è stato fatto per non caricare i pesi essendo più di 100 MB
+*.h5
