@@ -24,6 +24,7 @@ from keras import regularizers
 from keras import losses
 import pandas as pd
 import matplotlib.pyplot as plt
+import scipy.stats as st
 
 from sklearn.model_selection import train_test_split
 
@@ -49,6 +50,7 @@ which_channels = [1,2,3,4,5,6,7,8]
 
 n_channels = 8
 seq_len = 200
+addedd_SNR = 100
 # Specify if you are using accelerations =1 or displacements =0
 accelerations = 0
 
@@ -83,8 +85,8 @@ def read_data(path_data):
         signals_means = np.load(path_restore+'/Corrupted_signals_means.npy')
         signals_stds = np.load(path_restore+'/Corrupted_signals_stds.npy')
     # Create the dataset output structure
-    X       = np.zeros((N_ist, seq_len, n_channels))   #(10000,200,8)
-    # X_noise = np.zeros((N_ist, seq_len, n_channels))
+    X = np.zeros((N_ist, seq_len, n_channels))   #(10000,200,8)
+    X_noise = np.zeros((N_ist, seq_len, n_channels))
     for i1 in range(n_channels):
         path_data_var  = path_rec + str(which_channels[i1]) + '.csv'
         X_singledof = pd.read_csv(path_data_var, header=None).to_numpy()[:,0]
@@ -92,27 +94,27 @@ def read_data(path_data):
             # RESHAPE THE SIGNALS
             X[i2,:,i1]= X_singledof[1 + i2*(1+seq_len) : (i2+1)*(1+seq_len)]
             # # CORRUPT THE SIGNALS
-            # rms_signal = RMS(X[i2,:,i1])
-            # dev_std    = rms_signal / np.sqrt(addedd_SNR)
-            # sample = st.norm(0, dev_std)
-            # X_noise[i2,:,i1] = X[i2,:,i1] + sample.rvs(size=seq_len)
+            rms_signal = RMS(X[i2,:,i1])
+            dev_std    = rms_signal / np.sqrt(addedd_SNR)
+            sample = st.norm(0, dev_std)
+            X_noise[i2,:,i1] = X[i2,:,i1] + sample.rvs(size=seq_len)
         if path_data == path_data_train:
             # COMPUTE STATISTICS FOR EACH CHANNEL
-            # signals_means[i1] = np.mean(np.reshape(X_noise[:,:,i1], (N_ist*seq_len)))
-            # signals_stds[i1] = np.std(np.reshape(X_noise[:,:,i1], (N_ist*seq_len)))
-            signals_means[i1] = np.mean(np.reshape(X[:,:,i1], (N_ist*seq_len)))
-            signals_stds[i1] = np.std(np.reshape(X[:,:,i1], (N_ist*seq_len)))
+            signals_means[i1] = np.mean(np.reshape(X_noise[:,:,i1], (N_ist*seq_len)))
+            signals_stds[i1] = np.std(np.reshape(X_noise[:,:,i1], (N_ist*seq_len)))
+            # signals_means[i1] = np.mean(np.reshape(X[:,:,i1], (N_ist*seq_len)))
+            # signals_stds[i1] = np.std(np.reshape(X[:,:,i1], (N_ist*seq_len)))
 
         # NORMALIZE THE SIGNALS    
-        # X_noise[:,:,i1] = (X_noise[:,:,i1] - signals_means[i1])/signals_stds[i1]
-        X[:,:,i1] = (X[:,:,i1] - signals_means[i1])/signals_stds[i1]
+        X_noise[:,:,i1] = (X_noise[:,:,i1] - signals_means[i1])/signals_stds[i1]
+        # X[:,:,i1] = (X[:,:,i1] - signals_means[i1])/signals_stds[i1]
    
     # if path_data == path_data_train:    
     #     np.save(path_save+'Corrupted_signals_means', signals_means)
     #     np.save(path_save+'Corrupted_signals_stds', signals_stds)
        
     # return X_noise, labels_class, N_ist
-    return X, labels_class, N_ist
+    return X_noise, labels_class, N_ist
 
 
 """
@@ -133,47 +135,6 @@ class Sampling(layers.Layer):
         epsilon = keras.random.normal(shape=(batch, dim), seed=self.seed_generator)
         return z_mean + ops.exp(0.5 * z_log_var) * epsilon
 
-
-"""
-## Build the encoder
-"""
-
-# latent_dim = 2
-# encoder_inputs = keras.Input(shape=(200, 8))  #200 misurazioni da 8 canali
-# x = layers.Conv1D(32, 3, activation="relu", strides=2, padding="same")(encoder_inputs)  #Dimensione di Output: (100, 32)
-# x = layers.Conv1D(64, 3, activation="relu", padding="same")(x)   #Dimensione di Output: (100, 64)
-# x = layers.MaxPool1D(pool_size=2, strides=None, padding="valid", data_format=None, name=None)(x)  #Dimensione di Output: (50, 64)
-# x = layers.Conv1D(128, 3, activation="relu", padding="same")(x)   #Dimensione di Output: (50, 128)
-# x = layers.MaxPool1D(pool_size=2, strides=None, padding="valid", data_format=None, name=None)(x)  #Dimensione di Output: (25, 128)
-# x = layers.Flatten()(x)   #Dimensione di Output: (3200) essendo 50 * 64 = 3200
-# x = layers.Dense(160, activation="relu")(x)   # Dimensione di Output: (160)
-# x = layers.Dense(60, activation="relu")(x)   # Dimensione di Output: (60)
-# x = layers.Dense(16, activation="relu")(x)  # Dimensione di Output: (16)
-# z_mean = layers.Dense(latent_dim, name="z_mean")(x)
-# z_log_var = layers.Dense(latent_dim, name="z_log_var")(x)
-# z = Sampling()([z_mean, z_log_var])
-# encoder = keras.Model(encoder_inputs, [z_mean, z_log_var, z], name="encoder")
-# encoder.summary()
-
-"""
-## Build the decoder
-"""
-
-# latent_inputs = keras.Input(shape=(latent_dim,))  # Input latente di dimensione 2
-# x = layers.Dense(16, activation="relu")(latent_inputs)
-# x = layers.Dense(60, activation="relu")(x) 
-# x = layers.Dense(160, activation="relu")(x)
-# x = layers.Dense(25 * 128, activation="relu")(x)
-# x = layers.Reshape((25, 128))(x)
-# x = layers.UpSampling1D(size=2)(x)
-# x = layers.Conv1DTranspose(128, 3, activation="relu", padding="same")(x)
-# x = layers.UpSampling1D(size=2)(x)
-# x = layers.Conv1DTranspose(64, 3, activation="relu", padding="same")(x)
-# x = layers.Conv1DTranspose(32, 3, activation="relu", strides=2, padding="same")(x)
-# decoder_outputs = layers.Conv1D(8, 3, activation="sigmoid", padding="same")(x)
-# # decoder_outputs = layers.Conv1DTranspose(8, 3, activation="tanh", padding="same")(x)  
-# decoder = keras.Model(latent_inputs, decoder_outputs, name="decoder")
-# decoder.summary()
 
 
 """
@@ -203,20 +164,24 @@ b_reg = 1e-3
 rate_drop = 0.05
 
 """
-## Build the encoder 2
+## Build the encoder 
 """
 
 encoder_inputs  = layers.Input(shape=(seq_len, n_channels), name='Convolutional_inputs')
 x = layers.Conv1D(filters=filter_1, kernel_size=kernel_size_1, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_1')(encoder_inputs)
 x = layers.MaxPooling1D()(x)
-# x = layers.Dropout(rate=rate_drop)(x)   #Gli strati Dropout vengono utilizzati per regolarizzare il modello durante l'addestramento, disattivando casualmente una frazione di neuroni. Questo aiuta a prevenire l'overfitting.
+x = layers.Dropout(rate=rate_drop)(x)   #Gli strati Dropout vengono utilizzati per regolarizzare il modello durante l'addestramento, disattivando casualmente una frazione di neuroni. Questo aiuta a prevenire l'overfitting.
+
 x = layers.Conv1D(filters=filter_2, kernel_size=kernel_size_2, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_2')(x)
 x = layers.MaxPooling1D()(x)
-# x = layers.Dropout(rate=rate_drop)(x)
+x = layers.Dropout(rate=rate_drop)(x)
+
 x = layers.Conv1D(filters=filter_3, kernel_size=kernel_size_3, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_3')(x)
 x = layers.MaxPooling1D()(x)
-# x = layers.Dropout(rate=rate_drop)(x)
+x = layers.Dropout(rate=rate_drop)(x)
+
 x = layers.Flatten()(x)
+
 x = layers.Dense(units=neurons_4, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Dense_1')(x)
 x = layers.Dense(units=neurons_5, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Dense_2')(x)
 
@@ -229,7 +194,7 @@ encoder = keras.Model(encoder_inputs, [z_mean, z_log_var, z], name="encoder")
 encoder.summary()
 
 """
-## Build the decoder 2
+## Build the decoder 
 """
 
 latent_inputs_decoder = layers.Input(shape=(latent_dim,), name='Latent_inputs')
@@ -239,18 +204,27 @@ x = layers.Dense(units=neurons_4, activation=attivaz_mlp, kernel_regularizer=reg
 x = layers.Dense(units=filter_3 * (seq_len // 8), activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Dense_3_decoder')(x)
 x = layers.Reshape((seq_len // 8, filter_3))(x)
 
-x = layers.UpSampling1D(size=2)(x)
-x = layers.Conv1D(filters=filter_2, kernel_size=kernel_size_2, activation=attivaz_conv, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Conv_3_decoder')(x)
+# Applica strati Conv1DTranspose (o Conv1D per upsampling)
+x = layers.Conv1DTranspose(filters=filter_3, kernel_size=kernel_size_3, activation=attivaz_conv, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='ConvT_1')(x)
+x = layers.UpSampling1D()(x)
+x = layers.Dropout(rate=rate_drop)(x)
 
-x = layers.UpSampling1D(size=2)(x)
-x = layers.Conv1D(filters=filter_1, kernel_size=kernel_size_1, activation=attivaz_conv, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Conv_2_decoder')(x)
+x = layers.Conv1DTranspose(filters=filter_2, kernel_size=kernel_size_2, activation=attivaz_conv, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='ConvT_2')(x)
+x = layers.UpSampling1D()(x)
+x = layers.Dropout(rate=rate_drop)(x)
 
-x = layers.UpSampling1D(size=2)(x)
+x = layers.Conv1DTranspose(filters=filter_1, kernel_size=kernel_size_1, activation=attivaz_conv, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='ConvT_3')(x)
+x = layers.UpSampling1D()(x)
+x = layers.Dropout(rate=rate_drop)(x)
+
+# Ultimo livello per tornare alla forma originale
 decoder_outputs = layers.Conv1D(filters=n_channels, kernel_size=kernel_size_1, activation=None, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Conv_1_decoder')(x)
 
 # Definisci il modello
 decoder = keras.Model(latent_inputs_decoder, decoder_outputs, name='decoder')
 decoder.summary()
+
+
 
 
 """
@@ -324,7 +298,7 @@ class VAE(keras.Model):
             classification_loss = tf.reduce_mean(classification_loss)
 
             beta = 1.0
-            gamma = 1.0
+            gamma = 60.0
             total_loss = reconstruction_loss + beta * kl_loss + gamma * classification_loss
 
         grads = tape.gradient(total_loss, self.trainable_weights)
@@ -365,7 +339,7 @@ class VAE(keras.Model):
         classification_loss = tf.reduce_mean(classification_loss)
 
         beta = 1.0
-        gamma = 1.0
+        gamma = 60.0
         total_loss = reconstruction_loss + beta * kl_loss + gamma * classification_loss
 
         return {
@@ -382,8 +356,11 @@ class VAE(keras.Model):
         
         # Decodifica del campione z
         reconstructed = self.decoder(z)
+
+        # Decodifica del campione z
+        classified = self.classifier(z)
         
-        return reconstructed
+        return reconstructed, classified
 
 
 
@@ -394,7 +371,7 @@ class VAE(keras.Model):
 
 observations_normalized, damage_class_labels, N_ist_train = read_data(path_data_train)
 
-print(f"Forma di X_train: {observations_normalized.shape}")
+print(f"Forma di observations_normalized: {observations_normalized.shape}")
 
 for i in range(2):  
     print(f"Forma della {i+1}° osservazione: {observations_normalized[i].shape}")
@@ -517,13 +494,12 @@ def plot_label_clusters_3d(vae, data, labels):
     # Imposta il titolo della figura
     plt.suptitle(f'Grouped by damage class in 3D latent space', fontsize=16)
 
+    # Salva il grafico
+    plt.savefig(os.path.join(output_dir, "label_clusters_3d.png"))
+
     # Mostra il grafico
     plt.show()
 
-    # Salva il grafico
-    plt.savefig(os.path.join(output_dir, "label_clusters_3d.png"))
-    
-    plt.close()
 
 # Esempio di chiamata alla funzione
 # plot_label_clusters(vae, observations_normalized , damage_class_labels)

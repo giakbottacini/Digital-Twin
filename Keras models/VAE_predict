@@ -10,9 +10,11 @@ from tensorflow import keras
 import keras
 from keras import regularizers
 from keras import ops
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_squared_error, accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, mean_absolute_error
+import seaborn as sns
 import matplotlib.pyplot as plt
 from keras import layers
+import scipy.stats as st
 
 
 # Specify the example you are dealing with
@@ -33,9 +35,12 @@ which_channels = [1,2,3,4,5,6,7,8]
 
 n_channels = 8
 seq_len = 200
+addedd_SNR = 100
 # Specify if you are using accelerations =1 or displacements =0
 accelerations = 0
 
+def RMS(vect):
+    return np.sqrt(np.mean(np.square(vect)))
 
 """
 ## Importazione dati
@@ -60,8 +65,8 @@ def read_data(path_data):
         signals_means = np.load(path_restore+'/Corrupted_signals_means.npy')
         signals_stds = np.load(path_restore+'/Corrupted_signals_stds.npy')
     # Create the dataset output structure
-    X       = np.zeros((N_ist, seq_len, n_channels))   #(10000,200,8)
-    # X_noise = np.zeros((N_ist, seq_len, n_channels))
+    X = np.zeros((N_ist, seq_len, n_channels))   #(10000,200,8)
+    X_noise = np.zeros((N_ist, seq_len, n_channels))
     for i1 in range(n_channels):
         path_data_var  = path_rec + str(which_channels[i1]) + '.csv'
         X_singledof = pd.read_csv(path_data_var, header=None).to_numpy()[:,0]
@@ -69,10 +74,10 @@ def read_data(path_data):
             # RESHAPE THE SIGNALS
             X[i2,:,i1]= X_singledof[1 + i2*(1+seq_len) : (i2+1)*(1+seq_len)]
             # # CORRUPT THE SIGNALS
-            # rms_signal = RMS(X[i2,:,i1])
-            # dev_std    = rms_signal / np.sqrt(addedd_SNR)
-            # sample = st.norm(0, dev_std)
-            # X_noise[i2,:,i1] = X[i2,:,i1] + sample.rvs(size=seq_len)
+            rms_signal = RMS(X[i2,:,i1])
+            dev_std    = rms_signal / np.sqrt(addedd_SNR)
+            sample = st.norm(0, dev_std)
+            X_noise[i2,:,i1] = X[i2,:,i1] + sample.rvs(size=seq_len)
         if path_data == path_data_train:
             # COMPUTE STATISTICS FOR EACH CHANNEL
             # signals_means[i1] = np.mean(np.reshape(X_noise[:,:,i1], (N_ist*seq_len)))
@@ -81,15 +86,15 @@ def read_data(path_data):
             signals_stds[i1] = np.std(np.reshape(X[:,:,i1], (N_ist*seq_len)))
 
         # NORMALIZE THE SIGNALS    
-        # X_noise[:,:,i1] = (X_noise[:,:,i1] - signals_means[i1])/signals_stds[i1]
-        X[:,:,i1] = (X[:,:,i1] - signals_means[i1])/signals_stds[i1]
+        X_noise[:,:,i1] = (X_noise[:,:,i1] - signals_means[i1])/signals_stds[i1]
+        # X[:,:,i1] = (X[:,:,i1] - signals_means[i1])/signals_stds[i1]
    
     # if path_data == path_data_train:    
     #     np.save(path_save+'Corrupted_signals_means', signals_means)
     #     np.save(path_save+'Corrupted_signals_stds', signals_stds)
        
     # return X_noise, labels_class, N_ist
-    return X, labels_class, N_ist
+    return X_noise, labels_class, N_ist
 
 
 """
@@ -143,13 +148,13 @@ rate_drop = 0.05
 encoder_inputs  = layers.Input(shape=(seq_len, n_channels), name='Convolutional_inputs')
 x = layers.Conv1D(filters=filter_1, kernel_size=kernel_size_1, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_1')(encoder_inputs)
 x = layers.MaxPooling1D()(x)
-# x = layers.Dropout(rate=rate_drop)(x)   #Gli strati Dropout vengono utilizzati per regolarizzare il modello durante l'addestramento, disattivando casualmente una frazione di neuroni. Questo aiuta a prevenire l'overfitting.
+x = layers.Dropout(rate=rate_drop)(x)   #Gli strati Dropout vengono utilizzati per regolarizzare il modello durante l'addestramento, disattivando casualmente una frazione di neuroni. Questo aiuta a prevenire l'overfitting.
 x = layers.Conv1D(filters=filter_2, kernel_size=kernel_size_2, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_2')(x)
 x = layers.MaxPooling1D()(x)
-# x = layers.Dropout(rate=rate_drop)(x)
+x = layers.Dropout(rate=rate_drop)(x)
 x = layers.Conv1D(filters=filter_3, kernel_size=kernel_size_3, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_3')(x)
 x = layers.MaxPooling1D()(x)
-# x = layers.Dropout(rate=rate_drop)(x)
+x = layers.Dropout(rate=rate_drop)(x)
 x = layers.Flatten()(x)
 x = layers.Dense(units=neurons_4, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Dense_1')(x)
 x = layers.Dense(units=neurons_5, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Dense_2')(x)
@@ -173,13 +178,20 @@ x = layers.Dense(units=neurons_4, activation=attivaz_mlp, kernel_regularizer=reg
 x = layers.Dense(units=filter_3 * (seq_len // 8), activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Dense_3_decoder')(x)
 x = layers.Reshape((seq_len // 8, filter_3))(x)
 
-x = layers.UpSampling1D(size=2)(x)
-x = layers.Conv1D(filters=filter_2, kernel_size=kernel_size_2, activation=attivaz_conv, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Conv_3_decoder')(x)
+# Applica strati Conv1DTranspose (o Conv1D per upsampling)
+x = layers.Conv1DTranspose(filters=filter_3, kernel_size=kernel_size_3, activation=attivaz_conv, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='ConvT_1')(x)
+x = layers.UpSampling1D()(x)
+x = layers.Dropout(rate=rate_drop)(x)
 
-x = layers.UpSampling1D(size=2)(x)
-x = layers.Conv1D(filters=filter_1, kernel_size=kernel_size_1, activation=attivaz_conv, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Conv_2_decoder')(x)
+x = layers.Conv1DTranspose(filters=filter_2, kernel_size=kernel_size_2, activation=attivaz_conv, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='ConvT_2')(x)
+x = layers.UpSampling1D()(x)
+x = layers.Dropout(rate=rate_drop)(x)
 
-x = layers.UpSampling1D(size=2)(x)
+x = layers.Conv1DTranspose(filters=filter_1, kernel_size=kernel_size_1, activation=attivaz_conv, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='ConvT_3')(x)
+x = layers.UpSampling1D()(x)
+x = layers.Dropout(rate=rate_drop)(x)
+
+# Ultimo livello per tornare alla forma originale
 decoder_outputs = layers.Conv1D(filters=n_channels, kernel_size=kernel_size_1, activation=None, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Conv_1_decoder')(x)
 
 # Definisci il modello
@@ -258,7 +270,7 @@ class VAE(keras.Model):
             classification_loss = tf.reduce_mean(classification_loss)
 
             beta = 1.0
-            gamma = 1.0
+            gamma = 60.0
             total_loss = reconstruction_loss + beta * kl_loss + gamma * classification_loss
 
         grads = tape.gradient(total_loss, self.trainable_weights)
@@ -299,7 +311,7 @@ class VAE(keras.Model):
         classification_loss = tf.reduce_mean(classification_loss)
 
         beta = 1.0
-        gamma = 1.0
+        gamma = 60.0
         total_loss = reconstruction_loss + beta * kl_loss + gamma * classification_loss
 
         return {
@@ -315,8 +327,11 @@ class VAE(keras.Model):
         
         # Decodifica del campione z
         reconstructed = self.decoder(z)
+
+        # Decodifica del campione z
+        classified = self.classifier(z)
         
-        return reconstructed
+        return reconstructed, classified
 
 
 
@@ -329,6 +344,8 @@ class VAE(keras.Model):
 
 # Caricamento dei dati di test
 X_test, labels_test, N_ist_test = read_data(path_data_test)
+
+print(f"Forma di X_test: {X_test.shape}")
 
 # Creare dataset TensorFlow per il testing
 test_dataset = tf.data.Dataset.from_tensor_slices((X_test, labels_test))
@@ -344,7 +361,7 @@ vae.load_weights('./models/VAE_1D.weights.h5')
 
 
 # Ricostruzione dei dati di test
-X_test_reconstructed = vae.predict(test_dataset)
+X_test_reconstructed, X_test_classified = vae.predict(test_dataset)
 
 # Calcolo della perdita di ricostruzione (MSE tra dati originali e ricostruiti)
 reconstruction_loss = ops.mean(ops.sum(keras.losses.mean_squared_error(X_test, X_test_reconstructed), axis=1))
@@ -353,35 +370,42 @@ reconstruction_loss = ops.mean(ops.sum(keras.losses.mean_squared_error(X_test, X
 hist = pd.read_pickle(path_save + 'hist_VAE_1D.pkl')
 
 
+output_dir = "output_VAE_1D"
+
 """
-## Analisi della soluzione
+## Analisi della ricostruzione
 """
 
-best_val_loss = hist.val_loss.min()  # Migliore perdita di ricostruzione sui dati di validazione
-worst_val_loss = hist.val_loss.max()  # Peggiore perdita di ricostruzione sui dati di validazione
-print(f"Perdita di ricostruzione migliore: {best_val_loss}")
-print(f"Perdita di ricostruzione peggiore: {worst_val_loss}")
-print(f"Perdita di ricostruzione sui dati di test: {reconstruction_loss}")
+# MSE e MAE tra i dati ricostruiti e originali
+mse_reconstruction = mean_squared_error(X_test.flatten(), X_test_reconstructed.flatten())
+mae_reconstruction = mean_absolute_error(X_test.flatten(), X_test_reconstructed.flatten())
 
-# Mostra l'ultima epoca di addestramento
-print(f"Ultima epoca di addestramento: {max(hist.epoch)}")
+print(f"Mean Squared Error (MSE) sulla ricostruzione: {mse_reconstruction}")
+print(f"Mean Absolute Error (MAE) sulla ricostruzione: {mae_reconstruction}")
 
-if reconstruction_loss <= best_val_loss:
-    print("Le performance del modello sul test set sono eccellenti!")
-elif reconstruction_loss <= worst_val_loss:
-    print("Le performance del modello sul test set sono accettabili.")
-else:
-    print("Il modello ha delle difficoltà a generalizzare sui dati del test set.")
+# def compute_ssim_for_time_series(X_test, X_test_reconstructed, max_val=1.0):
+#     # Lista per memorizzare i valori di SSIM per ogni canale
+#     ssim_values = []
 
+#     # Itera attraverso il batch
+#     for i in range(len(X_test)):
+#         # Calcola il SSIM per ogni canale/sensore (dim 1) tra la serie temporale originale e quella ricostruita
+#         for channel in range(X_test.shape[-1]):
+#             # Estrae la serie temporale per il canale corrente
+#             ssim_value = tf.image.ssim(
+#                 tf.expand_dims(X_test[i, :, channel], axis=-1), 
+#                 tf.expand_dims(X_test_reconstructed[i, :, channel], axis=-1), 
+#                 max_val=max_val
+#             ).numpy()
+#             ssim_values.append(ssim_value)
+    
+#     # Calcola la media di SSIM per tutto il dataset
+#     mean_ssim = np.mean(ssim_values)
+#     return mean_ssim
 
-
-# Analisi di distribuzione degli errori
-reconstruction_errors = np.square(X_test.flatten() - X_test_reconstructed.flatten())
-plt.hist(reconstruction_errors, bins=50)
-plt.xlabel('Errore di Ricostruzione')
-plt.ylabel('Numero di Esempi')
-plt.title('Distribuzione degli Errori di Ricostruzione sul Test Set')
-plt.show()
+# # Esegui il calcolo del SSIM
+# mean_ssim = compute_ssim_for_time_series(X_test, X_test_reconstructed, max_val=1.0)
+# print(f"Structural Similarity Index (SSIM) for time series: {mean_ssim}")
 
 
 # Seleziona un esempio casuale
@@ -395,3 +419,48 @@ plt.plot(reconstructed_signal.flatten(), label='Ricostruito')
 plt.legend()
 plt.title(f"Segnale Originale vs Ricostruito - Esempio {idx}")
 plt.show()
+
+
+"""
+## Analisi della classificazione
+"""
+
+# Ottieni le classi previste
+predicted_classes = np.argmax(X_test_classified, axis=1)
+
+# Calcola metriche di classificazione
+accuracy = accuracy_score(labels_test, predicted_classes)
+precision = precision_score(labels_test, predicted_classes, average='weighted')
+recall = recall_score(labels_test, predicted_classes, average='weighted')
+f1 = f1_score(labels_test, predicted_classes, average='weighted')
+
+# Calcola la matrice di confusione
+conf_matrix = confusion_matrix(labels_test, predicted_classes)
+
+# Crea una figura con due sotto-figure
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 14))
+
+# Plot della matrice di confusione
+sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues', ax=ax1)
+ax1.set_title('Confusion Matrix')
+ax1.set_xlabel('Predicted Label')
+ax1.set_ylabel('True Label')
+
+# Aggiungi le metriche di classificazione come testo nella seconda sotto-figura
+metrics_text = (
+    f"Accuracy: {accuracy:.4f}\n"
+    f"Precision: {precision:.4f}\n"
+    f"Recall: {recall:.4f}\n"
+    f"F1-Score: {f1:.4f}"
+)
+ax2.text(0.5, 0.5, metrics_text, fontsize=12, ha='center', va='center')
+ax2.set_axis_off()  # Nascondi gli assi
+
+# Salva il grafico
+plt.tight_layout()
+plt.savefig(os.path.join(output_dir, "Confusion_Matrix_VAE.png"))
+
+# Mostra il grafico
+plt.show()
+
+
