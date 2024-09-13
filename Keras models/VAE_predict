@@ -370,6 +370,8 @@ reconstruction_loss = ops.mean(ops.sum(keras.losses.mean_squared_error(X_test, X
 hist = pd.read_pickle(path_save + 'hist_VAE_1D.pkl')
 
 
+
+
 output_dir = "output_VAE_1D"
 
 """
