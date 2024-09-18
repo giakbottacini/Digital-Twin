@@ -15,6 +15,11 @@ import matplotlib.pyplot as plt
 import tensorflow_probability as tfp
 import pandas as pd
 
+from keras import ops
+from sklearn.metrics import mean_squared_error, accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, mean_absolute_error
+import seaborn as sns
+
+import scipy.stats as st
 
 
 
@@ -30,7 +35,7 @@ path_data_test   = path + 'istantest_' + ID
 path_save       = "models/"
 # Prediction model
 restore_ID= 'Classifier_total_7_1/'
-path_restore = "results/"
+path_restore = path + restore_ID
 
 # Which dof monitored
 which_channels = [1,2,3,4,5,6,7,8]
@@ -51,6 +56,7 @@ def RMS(vect):
 """
 ## Importazione dati
 """
+addedd_SNR = 100
 
 # Read data and create dataset with only desired classes
 def read_data(path_data):    
@@ -72,7 +78,7 @@ def read_data(path_data):
         signals_stds = np.load(path_restore+'/Corrupted_signals_stds.npy')
     # Create the dataset output structure
     X       = np.zeros((N_ist, seq_len, n_channels))   #(10000,200,8)
-    # X_noise = np.zeros((N_ist, seq_len, n_channels))
+    X_noise = np.zeros((N_ist, seq_len, n_channels))
     for i1 in range(n_channels):
         path_data_var  = path_rec + str(which_channels[i1]) + '.csv'
         X_singledof = pd.read_csv(path_data_var, header=None).to_numpy()[:,0]
@@ -80,27 +86,27 @@ def read_data(path_data):
             # RESHAPE THE SIGNALS
             X[i2,:,i1]= X_singledof[1 + i2*(1+seq_len) : (i2+1)*(1+seq_len)]
             # # CORRUPT THE SIGNALS
-            # rms_signal = RMS(X[i2,:,i1])
-            # dev_std    = rms_signal / np.sqrt(addedd_SNR)
-            # sample = st.norm(0, dev_std)
-            # X_noise[i2,:,i1] = X[i2,:,i1] + sample.rvs(size=seq_len)
+            rms_signal = RMS(X[i2,:,i1])
+            dev_std    = rms_signal / np.sqrt(addedd_SNR)
+            sample = st.norm(0, dev_std)
+            X_noise[i2,:,i1] = X[i2,:,i1] + sample.rvs(size=seq_len)
         if path_data == path_data_train:
             # COMPUTE STATISTICS FOR EACH CHANNEL
-            # signals_means[i1] = np.mean(np.reshape(X_noise[:,:,i1], (N_ist*seq_len)))
-            # signals_stds[i1] = np.std(np.reshape(X_noise[:,:,i1], (N_ist*seq_len)))
-            signals_means[i1] = np.mean(np.reshape(X[:,:,i1], (N_ist*seq_len)))
-            signals_stds[i1] = np.std(np.reshape(X[:,:,i1], (N_ist*seq_len)))
+            signals_means[i1] = np.mean(np.reshape(X_noise[:,:,i1], (N_ist*seq_len)))
+            signals_stds[i1] = np.std(np.reshape(X_noise[:,:,i1], (N_ist*seq_len)))
+            # signals_means[i1] = np.mean(np.reshape(X[:,:,i1], (N_ist*seq_len)))
+            # signals_stds[i1] = np.std(np.reshape(X[:,:,i1], (N_ist*seq_len)))
 
         # NORMALIZE THE SIGNALS    
-        # X_noise[:,:,i1] = (X_noise[:,:,i1] - signals_means[i1])/signals_stds[i1]
-        X[:,:,i1] = (X[:,:,i1] - signals_means[i1])/signals_stds[i1]
+        X_noise[:,:,i1] = (X_noise[:,:,i1] - signals_means[i1])/signals_stds[i1]
+        # X[:,:,i1] = (X[:,:,i1] - signals_means[i1])/signals_stds[i1]
    
     # if path_data == path_data_train:    
     #     np.save(path_save+'Corrupted_signals_means', signals_means)
     #     np.save(path_save+'Corrupted_signals_stds', signals_stds)
        
     # return X_noise, labels_class, N_ist
-    return X, labels_class, N_ist
+    return X_noise, labels_class, N_ist
 
 
 """
@@ -119,8 +125,8 @@ seq_len = 200
 # Hyperparameters
 validation_split = 0.20
 batch_size = 32
-n_epochs = 250
-early_stop_epochs=15
+n_epochs = 150
+early_stop_epochs=10
 initial_lr = 1e-3
 decay_length = 0.8
 ratio_to_stop = 0.05
@@ -136,6 +142,179 @@ b_reg = 1e-3
 rate_drop = 0.05
 
 
+## Struttura con enhancements ispirata da dinh2017density
+# def residual_block(x, filters, kernel_size, dilation_rate=1):
+#     """Blocco residuo con convoluzione dilatata"""
+#     shortcut = x  # Connessione diretta
+
+#     # Se il numero di filtri non corrisponde, usa una convoluzione 1x1 per adattare la dimensione
+#     if x.shape[-1] != filters:  # Se il numero di canali non è uguale
+#         shortcut = layers.Conv1D(filters=filters, kernel_size=1, padding='same')(shortcut)
+    
+#     # Prima convoluzione dilatata
+#     x = layers.Conv1D(filters=filters, kernel_size=kernel_size, dilation_rate=dilation_rate,
+#                       padding='same', activation='relu', kernel_regularizer=regularizers.l2(0.01))(x)
+#     x = layers.BatchNormalization()(x)  # Aggiungi Batch Normalization
+    
+#     # Seconda convoluzione dilatata
+#     x = layers.Conv1D(filters=filters, kernel_size=kernel_size, dilation_rate=dilation_rate,
+#                       padding='same', activation='relu', kernel_regularizer=regularizers.l2(0.01))(x)
+#     x = layers.BatchNormalization()(x)  # Aggiungi Batch Normalization
+
+#     # Connessione residuale
+#     x = layers.Add()([shortcut, x])  # Somma la connessione residuale
+#     return layers.Activation('relu')(x)
+
+
+# def Coupling(input_shape=(200, 8), num_classes=n_class, reg=0.01):
+#     input_x = layers.Input(shape=input_shape, name='Input_X')
+#     input_y = layers.Input(shape=(num_classes,), name='Input_Label')
+    
+#     # Rete condizionale sui label
+#     label_condition = layers.Dense(32, activation='relu')(input_y)
+#     label_condition = layers.Dense(64, activation='relu')(label_condition)
+#     label_condition = layers.Dense(128, activation='relu')(label_condition)
+#     label_embedding = layers.Dense(256, activation='relu')(label_condition) 
+
+#     # Blocchi convoluzionali residui con convoluzioni dilatate
+#     x = layers.Conv1D(filters=32, kernel_size=3, padding='same', activation='relu')(input_x)
+#     x = residual_block(x, filters=32, kernel_size=3, dilation_rate=2)  # Primo blocco residuo
+#     x = layers.MaxPooling1D()(x)  # Downsampling
+    
+#     x = residual_block(x, filters=64, kernel_size=3, dilation_rate=4)  # Secondo blocco residuo
+#     x = layers.MaxPooling1D()(x)  # Downsampling
+    
+#     x = residual_block(x, filters=128, kernel_size=3, dilation_rate=8)  # Terzo blocco residuo
+#     x = layers.MaxPooling1D()(x)  # Downsampling
+    
+#     x = layers.Flatten()(x)
+
+#     # Livelli per la componente t (traslazione)
+#     t = layers.Dense(128, activation="relu", kernel_regularizer=regularizers.l2(reg))(x)
+#     t_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+#     t = layers.Concatenate()([t, t_embedding])
+#     t = layers.Dense(input_shape[0] * input_shape[1], activation="linear", kernel_regularizer=regularizers.l2(reg))(t)
+#     t_reshaped = layers.Reshape(input_shape)(t)
+
+#     # Livelli per la componente s (scalatura)
+#     s = layers.Dense(128, activation="relu", kernel_regularizer=regularizers.l2(reg))(x)
+#     s_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+#     s = layers.Concatenate()([s, s_embedding])
+#     s = layers.Dense(input_shape[0] * input_shape[1], activation="tanh", kernel_regularizer=regularizers.l2(reg))(s)
+#     s_reshaped = layers.Reshape(input_shape)(s)
+
+#     return keras.Model(inputs=[input_x, input_y], outputs=[s_reshaped, t_reshaped])
+
+
+
+# # Mia struttura con un grandissimo condizionamento  (forse non funziona poi)
+# def conditioned_conv1d(x, label_embedding, filters, kernel_size, dilation_rate=1):
+#     # Usa Lambda layer per espandere e ripetere label_embedding
+#     label_repeated = layers.Lambda(lambda z: tf.repeat(tf.expand_dims(z, 1), repeats=x.shape[1], axis=1))(label_embedding)
+    
+#     # Concatenazione del label lungo i canali
+#     x = layers.Concatenate()([x, label_repeated])
+
+#     # Applica convoluzione condizionata
+#     x = layers.Conv1D(filters=filters, kernel_size=kernel_size, dilation_rate=dilation_rate,
+#                       padding='same', kernel_regularizer=regularizers.l2(0.01),
+#                       activation='relu')(x)
+#     x = layers.BatchNormalization()(x)
+    
+#     return x
+
+# def Coupling(input_shape=(200, 8), num_classes=n_class, reg=0.01):
+#     # Input con shape (200, 8), ovvero 200 time steps con 8 feature per step
+#     input_x = layers.Input(shape=input_shape, name='Input_X')
+#     input_y = layers.Input(shape=(num_classes,), name='Input_Label')
+    
+#     # Network per condizionare s e t in funzione del label y
+#     # Uso un embedding più complesso per il label
+#     label_condition = layers.Dense(64, activation='relu')(input_y)
+#     label_condition = layers.Dense(128, activation='relu')(label_condition)
+#     label_embedding = layers.Dense(256, activation='relu')(label_condition)  # Embedding finale del label
+    
+#     # Batch Normalization e Dropout per stabilizzare l'apprendimento
+#     label_embedding = layers.BatchNormalization()(label_embedding)
+#     label_embedding = layers.Dropout(0.3)(label_embedding)  # Aggiungi Dropout per evitare overfitting
+
+#     # Blocchi convoluzionali per l'estrazione di caratteristiche temporali condizionate
+#     # Usando FiLM o concatenazione diretta all'interno delle convoluzioni
+    
+#     # Layer convoluzionali condizionati dai label
+#     x = conditioned_conv1d(input_x, label_embedding, filters=32, kernel_size=3, dilation_rate=1)
+#     x = layers.MaxPooling1D()(x)
+#     x = conditioned_conv1d(x, label_embedding, filters=64, kernel_size=3, dilation_rate=2)
+#     x = layers.MaxPooling1D()(x)
+#     x = conditioned_conv1d(x, label_embedding, filters=128, kernel_size=3, dilation_rate=4)
+#     x = layers.MaxPooling1D()(x)
+
+#     # Flatten per passare ai layer densi
+#     x = layers.Flatten()(x)
+
+#     # Livelli densi per la componente t (traslazione)
+#     t = layers.Dense(128, activation="relu", kernel_regularizer=regularizers.l2(reg))(x)
+#     t_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+#     t = layers.Concatenate()([t, t_embedding])  # Condizionamento
+#     t = layers.Dense(input_shape[0] * input_shape[1], activation="linear", kernel_regularizer=regularizers.l2(reg))(t)
+#     t_reshaped = layers.Reshape(input_shape)(t)
+
+#     # Livelli densi per la componente s (scalatura)
+#     s = layers.Dense(128, activation="relu", kernel_regularizer=regularizers.l2(reg))(x)
+#     s_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+#     s = layers.Concatenate()([s, s_embedding])  # Condizionamento
+#     s = layers.Dense(input_shape[0] * input_shape[1], activation="tanh", kernel_regularizer=regularizers.l2(reg))(s)
+#     s_reshaped = layers.Reshape(input_shape)(s)
+
+#     return keras.Model(inputs=[input_x, input_y], outputs=[s_reshaped, t_reshaped])
+
+
+
+
+
+
+
+# # Mia struttura con primo Enhancement del layer embedding   accuracy 0.8 (un po' di overfitting)
+# def Coupling(input_shape=(200, 8), num_classes=n_class, reg=0.01):
+#     # Input con shape (200, 8), ovvero 200 time steps con 8 feature per step
+#     input_x = layers.Input(shape=input_shape, name='Input_X')
+#     input_y = layers.Input(shape=(num_classes,), name='Input_Label')
+    
+#     # Network per condizionare s e t in funzione del label y
+#     # Uso un piccolo MLP per una rappresentazione più complessa dell'embedding delle classi
+#     label_condition = layers.Dense(32, activation='relu')(input_y)
+#     label_condition = layers.Dense(64, activation='relu')(label_condition)
+#     label_condition = layers.Dense(128, activation='relu')(label_condition)
+#     label_embedding = layers.Dense(256, activation='relu')(label_condition) 
+
+#     # Blocchi convoluzionali per l'estrazione di caratteristiche temporali
+#     x = layers.Conv1D(filters=filter_1, kernel_size=kernel_size_1, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_1')(input_x)
+#     x = layers.MaxPooling1D()(x)
+#     x = layers.Conv1D(filters=filter_2, kernel_size=kernel_size_2, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_2')(x)
+#     x = layers.MaxPooling1D()(x)
+#     x = layers.Conv1D(filters=filter_3, kernel_size=kernel_size_3, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_3')(x)
+#     x = layers.MaxPooling1D()(x)
+#     x = layers.Flatten()(x)
+
+#     # Livelli densi per la componente t (traslazione) con condizionamento MLP
+#     t = keras.layers.Dense(128, activation="relu", kernel_regularizer=regularizers.l2(reg))(x)
+#     t_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+#     t = layers.Concatenate()([t, t_embedding])  # Condizionamento
+#     t = keras.layers.Dense(input_shape[0] * input_shape[1], activation="linear", kernel_regularizer=regularizers.l2(reg))(t)
+#     t_reshaped = keras.layers.Reshape(input_shape)(t)
+
+#     # Livelli densi per la componente s (scalatura) con condizionamento MLP
+#     s = keras.layers.Dense(128, activation="relu", kernel_regularizer=regularizers.l2(reg))(x)
+#     s_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+#     s = layers.Concatenate()([s, s_embedding])  # Condizionamento
+#     s = keras.layers.Dense(input_shape[0] * input_shape[1], activation="tanh", kernel_regularizer=regularizers.l2(reg))(s)
+#     s_reshaped = keras.layers.Reshape(input_shape)(s)
+
+#     return keras.Model(inputs=[input_x, input_y], outputs=[s_reshaped, t_reshaped])
+
+
+
+# Mia struttura con primo Enhancement del layer embedding ma più fit   accuracy 
 def Coupling(input_shape=(200, 8), num_classes=n_class, reg=0.01):
     # Input con shape (200, 8), ovvero 200 time steps con 8 feature per step
     input_x = layers.Input(shape=input_shape, name='Input_X')
@@ -143,44 +322,162 @@ def Coupling(input_shape=(200, 8), num_classes=n_class, reg=0.01):
     
     # Network per condizionare s e t in funzione del label y
     # Uso un piccolo MLP per una rappresentazione più complessa dell'embedding delle classi
-    label_condition = layers.Dense(64, activation='relu')(input_y)
-    label_condition = layers.Dense(128, activation='relu')(label_condition)
-    label_condition = layers.Dense(128, activation='relu')(label_condition)
-    label_embedding = layers.Dense(256, activation='relu')(label_condition)  # Aggiungiamo un terzo livello per maggiore complessità
+    label_condition = layers.Dense(16, activation='relu')(input_y)
+    label_condition = layers.Dense(32, activation='relu')(label_condition)
+    label_condition = layers.Dense(64, activation='relu')(label_condition)
+    label_embedding = layers.Dense(128, activation='relu')(label_condition) 
 
     # Blocchi convoluzionali per l'estrazione di caratteristiche temporali
     x = layers.Conv1D(filters=filter_1, kernel_size=kernel_size_1, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_1')(input_x)
     x = layers.MaxPooling1D()(x)
-    x = layers.Conv1D(filters=filter_2, kernel_size=kernel_size_2, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_2')(x)
-    x = layers.MaxPooling1D()(x)
-    x = layers.Conv1D(filters=filter_3, kernel_size=kernel_size_3, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_3')(x)
-    x = layers.MaxPooling1D()(x)
+    x = layers.Dropout(0.3)(x)   # Aggiungi Dropout
+    x = layers.Conv1D(filters=filter_2, kernel_size=kernel_size_2, strides=2, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_2')(x)
+    x = layers.Dropout(0.3)(x)  # Aggiungi Dropout
+    x = layers.Conv1D(filters=filter_3, kernel_size=kernel_size_3, strides=2, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_3')(x)
+    x = layers.Dropout(0.3)(x)  # Aggiungi Dropout
+
     x = layers.Flatten()(x)
 
     # Livelli densi per la componente t (traslazione) con condizionamento MLP
-    t = keras.layers.Dense(128, activation="relu", kernel_regularizer=regularizers.l2(reg))(x)
-    t_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+    t = keras.layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(k_reg))(x)
+    t_embedding = layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(k_reg))(label_embedding)
     t = layers.Concatenate()([t, t_embedding])  # Condizionamento
-    t = keras.layers.Dense(input_shape[0] * input_shape[1], activation="linear", kernel_regularizer=regularizers.l2(reg))(t)
+    t = keras.layers.Dense(input_shape[0] * input_shape[1], activation="linear", kernel_regularizer=regularizers.l2(k_reg))(t)
     t_reshaped = keras.layers.Reshape(input_shape)(t)
 
     # Livelli densi per la componente s (scalatura) con condizionamento MLP
-    s = keras.layers.Dense(128, activation="relu", kernel_regularizer=regularizers.l2(reg))(x)
-    s_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+    s = keras.layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(k_reg))(x)
+    s_embedding = layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(k_reg))(label_embedding)
     s = layers.Concatenate()([s, s_embedding])  # Condizionamento
-    s = keras.layers.Dense(input_shape[0] * input_shape[1], activation="tanh", kernel_regularizer=regularizers.l2(reg))(s)
+    s = keras.layers.Dense(input_shape[0] * input_shape[1], activation="tanh", kernel_regularizer=regularizers.l2(k_reg))(s)
     s_reshaped = keras.layers.Reshape(input_shape)(s)
 
     return keras.Model(inputs=[input_x, input_y], outputs=[s_reshaped, t_reshaped])
 
 
-
-
-
-# def Coupling(input_shape=(200, 8), num_classes=n_class, reg=0.01):
+# #Mia struttura con primo Enhancement del layer embedding e stabilizzazione  accuracy 0.78
+# def Coupling(input_shape=(200, 8), num_classes=n_class, reg=0.01):   
 #     # Input con shape (200, 8), ovvero 200 time steps con 8 feature per step
 #     input_x = layers.Input(shape=input_shape, name='Input_X')
 #     input_y = layers.Input(shape=(num_classes,), name='Input_Label')
+    
+#     # Network per condizionare s e t in funzione del label y
+#     label_condition = layers.Dense(32, activation='relu')(input_y)
+#     label_condition = layers.BatchNormalization()(label_condition)  # Batch norm per stabilizzare
+#     label_condition = layers.Dense(64, activation='relu')(label_condition)
+#     label_condition = layers.BatchNormalization()(label_condition)
+#     label_condition = layers.Dense(128, activation='relu')(label_condition)
+#     label_condition = layers.BatchNormalization()(label_condition)
+#     label_embedding = layers.Dense(256, activation='relu')(label_condition)
+
+#     # Blocchi convoluzionali per l'estrazione di caratteristiche temporali
+#     x = layers.Conv1D(filters=filter_1, kernel_size=kernel_size_1, padding='same', activation=attivaz_conv, kernel_regularizer=regularizers.l2(k_reg))(input_x)
+#     x = layers.MaxPooling1D()(x)
+#     x = layers.Conv1D(filters=filter_2, kernel_size=kernel_size_2, padding='same', activation=attivaz_conv, kernel_regularizer=regularizers.l2(k_reg))(x)
+#     x = layers.MaxPooling1D()(x)
+#     x = layers.Conv1D(filters=filter_3, kernel_size=kernel_size_3, padding='same', activation=attivaz_conv, kernel_regularizer=regularizers.l2(k_reg))(x)
+#     x = layers.MaxPooling1D()(x)
+#     x = layers.Flatten()(x)
+
+#     # Livelli densi per la componente t (traslazione) con condizionamento MLP
+#     t = keras.layers.Dense(128, activation="relu", kernel_regularizer=regularizers.l2(reg))(x)
+#     t_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+#     t = layers.Concatenate()([t, t_embedding])  # Condizionamento
+#     t = keras.layers.Dense(input_shape[0] * input_shape[1], activation="linear", kernel_regularizer=regularizers.l2(reg))(t)
+#     t_reshaped = keras.layers.Reshape(input_shape)(t)
+
+#     # Livelli densi per la componente s (scalatura) con condizionamento MLP
+#     s = keras.layers.Dense(128, activation="relu", kernel_regularizer=regularizers.l2(reg))(x)
+#     s_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+#     s = layers.Concatenate()([s, s_embedding])  # Condizionamento
+#     # Usa exp invece di tanh per garantire la positività e stabilità numerica
+#     s = keras.layers.Dense(input_shape[0] * input_shape[1], activation="tanh", kernel_regularizer=regularizers.l2(reg))(s)
+#     s_reshaped = keras.layers.Reshape(input_shape)(s)
+
+#     return keras.Model(inputs=[input_x, input_y], outputs=[s_reshaped, t_reshaped])
+
+
+
+
+
+# # Struttura con enhancements ispirata da dinh2017density e qualche piccola modifica
+# def residual_block(x, filters, kernel_size, dilation_rate=1):
+#     """Blocco residuo con convoluzione dilatata"""
+#     shortcut = x
+#     if x.shape[-1] != filters:
+#         shortcut = layers.Conv1D(filters=filters, kernel_size=1, padding='same')(shortcut)
+    
+#     # Prima convoluzione dilatata
+#     x = layers.Conv1D(filters=filters, kernel_size=kernel_size, dilation_rate=dilation_rate,
+#                       padding='same', activation='relu', kernel_regularizer=regularizers.l2(0.01))(x)
+#     x = layers.BatchNormalization()(x)
+    
+#     # Seconda convoluzione dilatata
+#     x = layers.Conv1D(filters=filters, kernel_size=kernel_size, dilation_rate=dilation_rate,
+#                       padding='same', activation='relu', kernel_regularizer=regularizers.l2(0.01))(x)
+#     x = layers.BatchNormalization()(x)
+    
+#     # Connessione residuale
+#     x = layers.Add()([shortcut, x])
+#     return layers.Activation('relu')(x)
+
+# def Coupling(input_shape=(200, 8), num_classes=10, reg=0.01):
+#     input_x = layers.Input(shape=input_shape, name='Input_X')
+#     input_y = layers.Input(shape=(num_classes,), name='Input_Label')
+    
+#     # Rete condizionale sui label
+#     label_condition = layers.Dense(32, activation='relu')(input_y)
+#     label_condition = layers.BatchNormalization()(label_condition)
+#     label_condition = layers.Dense(64, activation='relu')(label_condition)
+#     label_condition = layers.BatchNormalization()(label_condition)
+#     label_condition = layers.Dense(128, activation='relu')(label_condition)
+#     label_condition = layers.BatchNormalization()(label_condition)
+#     label_embedding = layers.Dense(256, activation='relu')(label_condition) 
+
+#     # Blocchi convoluzionali migliorati con residui e dropout
+#     x = layers.Conv1D(filters=32, kernel_size=3, padding='same', activation='relu')(input_x)
+#     x = residual_block(x, filters=32, kernel_size=3, dilation_rate=2)  # Primo blocco residuo
+#     x = layers.MaxPooling1D()(x)  # Downsampling
+#     x = layers.Dropout(0.3)(x)  # Dropout
+
+#     x = residual_block(x, filters=64, kernel_size=3, dilation_rate=4)  # Secondo blocco residuo
+#     x = layers.MaxPooling1D()(x)  # Downsampling
+#     x = layers.Dropout(0.3)(x)  # Dropout
+
+#     x = residual_block(x, filters=128, kernel_size=3, dilation_rate=8)  # Terzo blocco residuo
+#     x = layers.MaxPooling1D()(x)  # Downsampling
+#     x = layers.Dropout(0.3)(x)  # Dropout
+    
+#     x = layers.Flatten()(x)
+
+#     # Livelli per la componente t (traslazione)
+#     t = layers.Dense(128, activation="relu", kernel_regularizer=regularizers.l2(reg))(x)
+#     t = layers.Dropout(0.3)(t)  # Dropout
+#     t_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+#     t = layers.Concatenate()([t, t_embedding])
+#     t = layers.Dense(input_shape[0] * input_shape[1], activation="linear", kernel_regularizer=regularizers.l2(reg))(t)
+#     t_reshaped = layers.Reshape(input_shape)(t)
+
+#     # Livelli per la componente s (scalatura)
+#     s = layers.Dense(128, activation="relu", kernel_regularizer=regularizers.l2(reg))(x)
+#     s = layers.Dropout(0.3)(s)  # Dropout
+#     s_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+#     s = layers.Concatenate()([s, s_embedding])
+#     s = layers.Dense(input_shape[0] * input_shape[1], activation="tanh", kernel_regularizer=regularizers.l2(reg))(s)
+#     s_reshaped = layers.Reshape(input_shape)(s)
+
+#     return keras.Model(inputs=[input_x, input_y], outputs=[s_reshaped, t_reshaped])
+
+
+
+
+
+
+## Mio coupling layer iniziale con label embedding
+# def Coupling(input_shape=(200, 8), num_classes=n_class, reg=0.01):
+#     # Input con shape (200, 8), ovvero 200 time steps con 8 feature per step
+#     input_x = layers.Input(shape=input_shape, name='Input_X')
+#     input_y = layers.Input(shape=(num_classes,), name='Input_Label')    # Input con shape (200, 8), ovvero 200 time steps con 8 feature per step
     
 #     # Network per condizionare s e t in funzione del label y
 #     # Utilizzo di una rete di embedding per ottenere una rappresentazione continua della classe
@@ -211,6 +508,7 @@ def Coupling(input_shape=(200, 8), num_classes=n_class, reg=0.01):
 #     s_reshaped = layers.Reshape(input_shape)(s)
 
 #     return keras.Model(inputs=[input_x, input_y], outputs=[s_reshaped, t_reshaped])
+    
 
 
 """
@@ -235,6 +533,17 @@ class RealNVP(keras.Model):
             [[0] * 800 + [1] * 800, [1] * 800 + [0] * 800] * (num_coupling_layers // 2), dtype=tf.float32
         )
 
+
+        # # Creazione della maschera alternata sui canali
+        # self.masks = tf.convert_to_tensor(
+        #     [[1, 0] * 4] * num_coupling_layers,  # Alternanza sui canali (8 canali: [1, 0, 1, 0, 1, 0, 1, 0])
+        #     dtype=tf.float32
+        # )
+
+        # # Ogni maschera è ora di dimensione (8,) quindi dobbiamo estendere la maschera in base ai time steps
+        # self.masks = tf.reshape(self.masks, [num_coupling_layers, 1, 1, 8])  # Aggiunge dimensioni batch e time steps
+
+
         self.loss_tracker = keras.metrics.Mean(name="loss")
         self.log_likelihood_tracker = keras.metrics.Mean(name="log_likelihood")
         self.log_det_inv_tracker = keras.metrics.Mean(name="log_det_inv")
@@ -247,36 +556,62 @@ class RealNVP(keras.Model):
                 self.log_likelihood_tracker,
                 self.log_det_inv_tracker]
 
-    def call(self, x, y, training=True):
 
-        log_det_inv = 0
-        direction = -1 if training else 1  # Direzione della trasformazione (invertito in training)
+    # # call modificato da me 
+    # def call(self, x, y, training=True):
 
-        for i in range(self.num_coupling_layers)[::direction]:
-            # Separiamo x_A (parte trasformata) e x_B (parte invariata) tramite le maschere
+    #     log_det_inv = 0
+    #     direction = -1 if training else 1  # Direzione della trasformazione (invertito in training)
+
+    #     for i in range(self.num_coupling_layers)[::direction]:
+    #         # Separiamo x_A (parte trasformata) e x_B (parte invariata) tramite le maschere
+    #         mask = tf.reshape(self.masks[i], [1, 200, 8])  # Aggiungi una dimensione batch
+
+    #         x_A = x * mask  # Parte trasformata
+    #         x_B = x * (1 - mask)  # Parte invariata
+            
+    #         # Passa x_B mascherato e il label y per calcolare s(x_B) e t(x_B)
+    #         s, t = self.layers_list[i]([x_B, y])  # Funzioni di scalatura e traslazione
+            
+    #         # Applica la trasformazione diretta o inversa in base alla direzione
+    #         if direction == 1:
+    #             # In avanti: y_A = x_A * e^{s(x_B)} + t(x_B)
+    #             x_A = x_A * tf.exp(s) + t
+    #         else:
+    #             # In inverso: x_A = (y_A - t(x_B)) / e^{s(x_B)}
+    #             x_A = (x_A - t) / tf.exp(s)
+
+    #         # Ricombina x_A trasformato con x_B invariato
+    #         x = x_A * mask + x_B * (1 - mask)
+
+            
+    #         log_det_inv += tf.reduce_sum(s * mask, axis=[1, 2])  # Log-determinante su s(x_B)
+
+    #     return x, -log_det_inv
+
+
+    # call con struttura iniziale 
+    def call(self, x, y, training=True):  
+
+        log_det_inv = 0   
+
+        for i in range(self.num_coupling_layers):
+            # # Applica la maschera alternata sui canali
+            # mask = self.masks[i]  # Ottieni la maschera per il layer i-esimo
+            # mask = tf.tile(mask, [tf.shape(x)[0], tf.shape(x)[1], 1])  # Replica la maschera per batch e time steps
+
             mask = tf.reshape(self.masks[i], [1, 200, 8])  # Aggiungi una dimensione batch
+            x_masked = x * mask  # Maschera l'input
+            reversed_mask = 1 - mask
+            s, t = self.layers_list[i]([x_masked, y])
+            s *= reversed_mask
+            t *= reversed_mask
 
-            mask = tf.tile(mask, [tf.shape(x)[0], 1, 1])  # Replica la maschera per il batch size
-
-            x_A = x * mask  # Parte trasformata
-            x_B = x * (1 - mask)  # Parte invariata
-            
-            # Passa x_B mascherato e il label y per calcolare s(x_B) e t(x_B)
-            s, t = self.layers_list[i]([x_B, y])  # Funzioni di scalatura e traslazione
-            
-            # Applica la trasformazione diretta o inversa in base alla direzione
-            if direction == 1:
-                # In avanti: y_A = x_A * e^{s(x_B)} + t(x_B)
-                x_A = x_A * tf.exp(s) + t
-            else:
-                # In inverso: x_A = (y_A - t(x_B)) / e^{s(x_B)}
-                x_A = (x_A - t) / tf.exp(s)
-
-            # Ricombina x_A trasformato con x_B invariato
-            x = x_A * mask + x_B * (1 - mask)
-
-            
-            log_det_inv += tf.reduce_sum(s * mask, axis=[1, 2])  # Log-determinante su s(x_B)
+            x = (
+                reversed_mask * (x * tf.exp(s) +  t )
+                + x_masked
+            )
+            log_det_inv += tf.reduce_sum(s, axis=[1, 2])
 
         return x, log_det_inv
     
@@ -290,20 +625,28 @@ class RealNVP(keras.Model):
         z_pred = tf.reshape(z_pred, [-1, 1600])
 
         # Calcola la log-likelihood condizionata
-        log_likelihood = self.distribution.log_prob(z_pred)
+        log_likelihood_z = self.distribution.log_prob(z_pred) 
 
-        # La funzione di perdita è la negativa della log-likelihood più il log_det_inv
-        loss = -tf.reduce_mean(log_likelihood - log_det_inv)
+        # tf.print("log_prob:", self.distribution.log_prob(z_pred))
+
+
+
+        # # La funzione di perdita è la negativa della log-likelihood più il log_det_inv
+        # loss = -tf.reduce_mean(log_likelihood - log_det_inv)
 
         
-        return loss, tf.reduce_mean(log_likelihood), tf.reduce_mean(log_det_inv)
+        return tf.reduce_mean(log_likelihood_z), tf.reduce_mean(log_det_inv)
+
 
     
 
     def train_step(self, data):
         x, y = data  # Estraiamo i dati e le etichette
         with tf.GradientTape() as tape:
-            loss, log_likelihood, log_det_inv = self.compute_loss(x, y)
+            log_likelihood_z, log_det_inv = self.compute_loss(x, y)
+
+            # Total loss is the sum of log-likelihood and the log-det term
+            loss = -(log_likelihood_z + log_det_inv)
 
         # Calcola i gradienti
         grads = tape.gradient(loss, self.trainable_variables)
@@ -313,7 +656,7 @@ class RealNVP(keras.Model):
         # Aggiorna lo stato del tracker della perdita
         self.loss_tracker.update_state(loss)
         # Aggiorna i tracker delle componenti
-        self.log_likelihood_tracker.update_state(log_likelihood)
+        self.log_likelihood_tracker.update_state(log_likelihood_z)
         self.log_det_inv_tracker.update_state(log_det_inv)
 
         return {
@@ -326,10 +669,11 @@ class RealNVP(keras.Model):
 
     def test_step(self, data):
         x, y = data
-        loss, log_likelihood, log_det_inv = self.compute_loss(x, y)
-        self.loss_tracker.update_state(loss)
+        log_likelihood_z, log_det_inv = self.compute_loss(x, y)
+        loss = -(log_likelihood_z + log_det_inv)
 
-        self.log_likelihood_tracker.update_state(log_likelihood)
+        self.loss_tracker.update_state(loss)
+        self.log_likelihood_tracker.update_state(log_likelihood_z)
         self.log_det_inv_tracker.update_state(log_det_inv)
         
         return {
@@ -347,157 +691,246 @@ class RealNVP(keras.Model):
         # Applica il modello per ottenere z_pred e il log-determinante del Jacobiano
         z_pred, log_det_inv = self(x, y, training=False)
 
+        print(f"log_det_inv: {log_det_inv}")
+
         # Rimodella z_pred in (None, 1600) per farlo corrispondere alla dimensione della distribuzione
         z_pred = tf.reshape(z_pred, [-1, 1600])
 
         # Calcola la log-likelihood condizionata
-        log_likelihood = self.distribution.log_prob(z_pred) - log_det_inv
+        log_likelihood_z = self.distribution.log_prob(z_pred)
+
+        log_likelihood = log_likelihood_z + log_det_inv
 
         return log_likelihood
+
 
 
     def predict_for_all_labels(self, x):
         # Assicurati che x sia un tensore
         x = tf.convert_to_tensor(x, dtype=tf.float32)
+
+        all_log_likelihoods = []
+
+        # Prevedi una classe alla volta
+        for i in range(self.num_classes):
+            # Crea un vettore one-hot per la classe corrente
+            current_label = tf.one_hot([i], self.num_classes)
+
+            # Ripeti current_label per l'intero batch
+            current_label_repeated = tf.repeat(current_label, repeats=tf.shape(x)[0], axis=0)  # (batch_size, num_classes)
+
+            # Prevedi per la classe corrente
+            z_pred, log_det_inv = self(x, current_label_repeated, training=False)
+
+            # Rimodella z per adattarsi alla dimensione della distribuzione
+            z_pred = tf.reshape(z_pred, [-1, 1600])  # (batch_size, 1600)
+            
+            # Calcola la log-likelihood condizionata nello spazio latente
+            log_likelihood_z = self.distribution.log_prob(z_pred)
+
+            # Calcola la log-likelihood complessiva per questa classe
+            log_likelihood = log_likelihood_z + log_det_inv
+            
+            # Aggiungi il risultato alla lista
+            all_log_likelihoods.append(log_likelihood)
+
+            # Stampa la forma di ogni tensore nella lista prima della concatenazione
+        for likelihood in all_log_likelihoods:
+            print(likelihood.shape)
+
+        # Concatena tutte le log-likelihoods per restituire un risultato finale
+        return tf.stack(all_log_likelihoods, axis=1)
+
         
-        # Creare un array one-hot per tutte le classi
-        all_labels = np.eye(self.num_classes)  # (num_classes, num_classes)
-        all_labels = tf.convert_to_tensor(all_labels, dtype=tf.float32)
-        
-        # Replica x per ogni label (batch_size, num_classes, features)
-        x_expanded = tf.expand_dims(x, 1)  # Aggiungi una dimensione per i label: (batch_size, 1, features)
-        x_tiled = tf.tile(x_expanded, [1, self.num_classes, 1, 1])  # (batch_size, num_classes, 200, 8)
-        
-        # Aggiungi una dimensione per espandere all_labels (num_classes -> batch_size, num_classes, num_classes)
-        all_labels_tiled = tf.tile(tf.expand_dims(all_labels, 0), [x.shape[0], 1, 1])  # (batch_size, num_classes, num_classes)
-        
-        # Reshaping per poter passare al modello
-        x_reshaped = tf.reshape(x_tiled, [-1, x.shape[1], x.shape[2]])  # (batch_size * num_classes, 200, 8)
-        labels_reshaped = tf.reshape(all_labels_tiled, [-1, self.num_classes])  # (batch_size * num_classes, num_classes)
 
-        # Applica il modello per ottenere z e il log-determinante del Jacobiano
-        z, log_det_inv = self(x_reshaped, labels_reshaped, training=False)  # (batch_size * num_classes, 200, 8)
-        
-        # Rimodella z per adattarsi alla dimensione della distribuzione
-        z = tf.reshape(z, [-1, 1600])  # (batch_size * num_classes, 1600)
-        
-        # Calcola la log-likelihood condizionata nello spazio latente
-        log_likelihood = self.distribution.log_prob(z) - log_det_inv  # (batch_size * num_classes)
-        
-        # Rimodella log-likelihood per ottenere (batch_size, num_classes)
-        log_likelihoods = tf.reshape(log_likelihood, [x.shape[0], self.num_classes])
-
-        return log_likelihoods
-        
+train_or_predict = 0 # 1: training, 0: predict
 
 
-"""
-## Model training
-"""
+if train_or_predict:
+    """
+    ## Model training
+    """
 
-observations_normalized, damage_class_labels, N_ist_train = read_data(path_data_train)
+    observations_normalized, damage_class_labels, N_ist_train = read_data(path_data_train)
 
-print(f"Forma di observations_normalized: {observations_normalized.shape}")
-print(f"Forma di damage_class_labels: {damage_class_labels.shape}")
+    print(f"Forma di observations_normalized: {observations_normalized.shape}")
+    print(f"Forma di damage_class_labels: {damage_class_labels.shape}")
 
-model = RealNVP(num_coupling_layers=6, num_classes=n_class)
+    model = RealNVP(num_coupling_layers=8, num_classes=n_class)
 
-model.compile(optimizer=keras.optimizers.Adam(learning_rate=keras.optimizers.schedules.CosineDecay(initial_learning_rate=initial_lr, decay_steps=int(decay_length*n_epochs*N_ist_train*(1-validation_split)/batch_size), alpha=ratio_to_stop)))
+    model.compile(optimizer=keras.optimizers.Adam(learning_rate=keras.optimizers.schedules.CosineDecay(initial_learning_rate=initial_lr, decay_steps=int(decay_length*n_epochs*N_ist_train*(1-validation_split)/batch_size), alpha=ratio_to_stop)))
 
-# Crea un dataset tf.data.Dataset dai dati e dalle etichette
-damage_class_labels = tf.cast(damage_class_labels, tf.int64)  # Converti in int64
-print(f"Forma di damage_class_labels 1: {damage_class_labels.shape}")
-damage_class_labels_one_hot = tf.one_hot(damage_class_labels, depth=n_class)
-print(f"Forma di damage_class_labels_one_hot: {damage_class_labels_one_hot.shape}")
+    model.summary()
 
-dataset = tf.data.Dataset.from_tensor_slices((observations_normalized, damage_class_labels_one_hot))
+    # Crea un dataset tf.data.Dataset dai dati e dalle etichette
+    damage_class_labels = tf.cast(damage_class_labels, tf.int64)  # Converti in int64
+    print(f"Forma di damage_class_labels 1: {damage_class_labels.shape}")
+    damage_class_labels_one_hot = tf.one_hot(damage_class_labels, depth=n_class)
+    print(f"Forma di damage_class_labels_one_hot: {damage_class_labels_one_hot.shape}")
 
-# Calcola il numero di batch di validazione
-validation_split = 0.2
-dataset_size = len(observations_normalized)
-validation_size = int(dataset_size * validation_split)
-train_size = dataset_size - validation_size
+    dataset = tf.data.Dataset.from_tensor_slices((observations_normalized, damage_class_labels_one_hot))
 
-# Dividi il dataset in train e validation
-train_dataset = dataset.take(train_size).batch(batch_size)
-validation_dataset = dataset.skip(train_size).take(validation_size).batch(batch_size)
+    # Calcola il numero di batch di validazione
+    validation_split = 0.2
+    dataset_size = len(observations_normalized)
+    validation_size = int(dataset_size * validation_split)
+    train_size = dataset_size - validation_size
 
-
-early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=early_stop_epochs, restore_best_weights=True)
-
-history = model.fit(
-    train_dataset, epochs=100, verbose=2, validation_data=validation_dataset, callbacks=[early_stop]
-)
+    # Dividi il dataset in train e validation
+    train_dataset = dataset.take(train_size).batch(batch_size)
+    validation_dataset = dataset.skip(train_size).take(validation_size).batch(batch_size)
 
 
-# Salva lo storico dell'addestramento in formato pickle
-hist = pd.DataFrame(history.history)  # Converti history.history (dati storici dell'addestramento) in un DataFrame di pandas
-hist['epoch'] = history.epoch  # Aggiungi una colonna per le epoche. history.epoch è una lista che contiene i numeri delle epoche per cui sono stati registrati i dati.
+    early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=early_stop_epochs, restore_best_weights=True)
 
-# Salva il DataFrame
-try:
-    hist.to_pickle(os.path.join(path_save, 'hist_NVP_cond.pkl'))   #Salva il DataFrame hist in un file con formato pickle.
-    print(f"Storico salvato in {os.path.join(path_save, 'hist_NVP_cond.pkl')}")
-except Exception as e:
-    print(f"Errore durante il salvataggio dello storico: {e}")
+    history = model.fit(
+        train_dataset, epochs=n_epochs, verbose=2, validation_data=validation_dataset, callbacks=[early_stop]
+    )
 
 
-# Salva i pesi
-model.save_weights('./models/NVP_cond.weights.h5')
+    # Salva lo storico dell'addestramento in formato pickle
+    hist = pd.DataFrame(history.history)  # Converti history.history (dati storici dell'addestramento) in un DataFrame di pandas
+    hist['epoch'] = history.epoch  # Aggiungi una colonna per le epoche. history.epoch è una lista che contiene i numeri delle epoche per cui sono stati registrati i dati.
+
+    # Salva il DataFrame
+    try:
+        hist.to_pickle(os.path.join(path_save, 'hist_NVP_cond.pkl'))   #Salva il DataFrame hist in un file con formato pickle.
+        print(f"Storico salvato in {os.path.join(path_save, 'hist_NVP_cond.pkl')}")
+    except Exception as e:
+        print(f"Errore durante il salvataggio dello storico: {e}")
+
+
+    # Salva i pesi
+    model.save_weights('./models/NVP_cond.weights.h5')
+
+
+    """
+    ## Performance evaluation
+    """
+
+    # Questa porzione del codice genera un grafico dell'andamento della perdita (\textit{loss}) durante il processo di addestramento del modello, 
+    # per entrambi i set di dati di addestramento e di validazione.
+    plt.figure(figsize=(15, 10))   #
+    plt.plot(history.history["loss"])
+    plt.plot(history.history["val_loss"])
+    plt.title("model loss")
+    plt.legend(["train", "validation"], loc="upper right")
+    plt.ylabel("loss")
+    plt.xlabel("epoch")
+    plt.show()
+    plt.close()
+
+   
+else:
+    """
+    ## Predict
+    """
+    output_dir = "output_NVP"
+
+    # Caricamento dei dati di test
+    X_test, labels_test, N_ist_test = read_data(path_data_test)
+
+    X_test = X_test[:4000]
+    labels_test = labels_test[:4000]
+
+    print(f"Forma di X_test: {X_test.shape}")
+
+    # Crea una codifica one-hot delle etichette
+    labels_test = tf.cast(labels_test, tf.int64)
+    labels_test_one_hot = tf.one_hot(labels_test, depth=n_class)
+    print(f"Forma di labels test one hot encoding: {labels_test_one_hot.shape}")
+
+
+    # test_dataset = tf.data.Dataset.from_tensor_slices((X_test, labels_test_one_hot))
+    # test_dataset = test_dataset.batch(batch_size)
+
+    # # Stampa la forma di un singolo batch
+    # for x_batch, y_batch in test_dataset.take(1):  # Prendi un batch dal dataset per controllare le dimensioni
+    #     print(f"Forma di un batch di dati: {x_batch.shape}")
+    #     print(f"Forma di un batch di etichette: {y_batch.shape}")
+
+
+
+    # Creazione dell'istanza RealNVP
+    NVP = RealNVP(num_coupling_layers=8, num_classes=n_class)
+
+    # NVP.compile(optimizer = keras.optimizers.Adam(learning_rate=keras.optimizers.schedules.CosineDecay(initial_learning_rate=initial_lr, decay_steps=int(decay_length*n_epochs*N_ist_test*(1-validation_split)/batch_size), alpha=ratio_to_stop)))
+    #Non serve compilare se non devo continuare il training
+
+    # Caricamento dei pesi salvati
+    NVP.load_weights('./models/NVP_cond.weights.h5')
+
+
+
+    # Ricostruzione dei dati di test
+    log_likelihood_test = NVP.predict(X_test, labels_test_one_hot)  
+
+
+    log_likelihoods = NVP.predict_for_all_labels(X_test)
+
+    print(f"Forma di log_likelihoods: {log_likelihoods.shape}")
+
+    # Stampa delle prime 5 righe di log_likelihoods
+    print("Prime 5 righe di log_likelihoods:")
+    print(log_likelihoods.numpy()[:5])
+
+    # Predizione delle classi usando la log-likelihood massima
+    predicted_classes = tf.argmax(log_likelihoods, axis=1).numpy()
+
+    print(f"Forma di predicted_classes: {predicted_classes.shape}")
+    # Stampa delle prime 5 righe di predicted_classes
+    print("Prime 5 righe di predicted_classes:")
+    print(predicted_classes[:5])
 
 
 
 
-"""
-## Performance evaluation
-"""
-
-# Questa porzione del codice genera un grafico dell'andamento della perdita (\textit{loss}) durante il processo di addestramento del modello, 
-# per entrambi i set di dati di addestramento e di validazione.
-plt.figure(figsize=(15, 10))   #
-plt.plot(history.history["loss"])
-plt.plot(history.history["val_loss"])
-plt.title("model loss")
-plt.legend(["train", "validation"], loc="upper right")
-plt.ylabel("loss")
-plt.xlabel("epoch")
-plt.show()
-plt.close()
+    # Caricamento della cronologia dell'addestramento
+    hist = pd.read_pickle(path_save + 'hist_NVP_cond.pkl')
 
 
 
-#Test del modello ottenuto
+    """
+    ## Analisi della classificazione
+    """ 
 
-# Calcolo del log-likelihood su dati di test/validazione
-# test_log_likelihood = -model.log_loss(normalized_data_2)
-# print(f"Test log-likelihood: {test_log_likelihood.numpy()}")
+    # Calcola metriche di classificazione
+    accuracy = accuracy_score(labels_test, predicted_classes)
+    precision = precision_score(labels_test, predicted_classes, average='weighted')
+    recall = recall_score(labels_test, predicted_classes, average='weighted')
+    f1 = f1_score(labels_test, predicted_classes, average='weighted')
 
-# # Genera nuovi campioni dallo spazio latente
-# z_samples = model.distribution.sample(1000)  # Esempio di 1000 campioni latenti
-# generated_samples, _ = model.predict(z_samples)
+    # Calcola la matrice di confusione
+    conf_matrix = confusion_matrix(labels_test, predicted_classes)
 
-# # Confronta i nuovi campioni con i dati originali
-# plt.figure(figsize=(10, 6))
-# plt.scatter(generated_samples[:, 0], generated_samples[:, 1], label="Generated Samples", color='b', alpha=0.5)
-# plt.scatter(normalized_data_1[:, 0], normalized_data_1[:, 1], label="Training Data", color='r', alpha=0.5)
-# plt.legend()
-# plt.show()
+    # Crea una figura con due sotto-figure
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 14))
 
-# from scipy.stats import wasserstein_distance
+    # Plot della matrice di confusione
+    sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues', ax=ax1)
+    ax1.set_title('Confusion Matrix')
+    ax1.set_xlabel('Predicted Label')
+    ax1.set_ylabel('True Label')
 
-# # Calcolo della distanza di Wasserstein tra due distribuzioni (ad esempio, prima e seconda dimensione)
-# wd = wasserstein_distance(normalized_data_1[:, 0], generated_samples[:, 0])
-# print(f"Wasserstein distance (dimension 1): {wd}")
+    # Aggiungi le metriche di classificazione come testo nella seconda sotto-figura
+    metrics_text = (
+        f"Accuracy: {accuracy:.4f}\n"
+        f"Precision: {precision:.4f}\n"
+        f"Recall: {recall:.4f}\n"
+        f"F1-Score: {f1:.4f}"
+    )
+    ax2.text(0.5, 0.5, metrics_text, fontsize=12, ha='center', va='center')
+    ax2.set_axis_off()  # Nascondi gli assi
 
-# #Latent Space Analysis
-# from sklearn.decomposition import PCA
-# from sklearn.manifold import TSNE
+    # Salva il grafico
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, "Confusion_Matrix_NVP.png"))
 
-# # PCA per ridurre lo spazio latente a 2D
-# pca = PCA(n_components=2)
-# z_pca = pca.fit_transform(z)
+    # Mostra il grafico
+    plt.show()
 
-# plt.figure(figsize=(8, 6))
-# plt.scatter(z_pca[:, 0], z_pca[:, 1], label="Latent Space (PCA)", color='b', alpha=0.5)
-# plt.title("Latent space after PCA")
-# plt.show()
+
+
+
+
+

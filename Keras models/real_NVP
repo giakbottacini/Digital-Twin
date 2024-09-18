@@ -133,6 +133,9 @@ class RealNVP(keras.Model):
             [[0, 1], [1, 0]] * (num_coupling_layers // 2), dtype="float32"   #La maschera alterna i valori tra [0, 1] e [1, 0], il che significa che i dati vengono suddivisi in due componenti. Ogni strato di accoppiamento trasforma una sola componente alla volta, lasciando l'altra invariata.
         )
         self.loss_tracker = keras.metrics.Mean(name="loss")    #Viene utilizzato un keras.metrics.Mean chiamato loss_tracker per tracciare il valore medio della perdita (loss) durante l'addestramento del modello. 
+        self.log_likelihood_tracker = keras.metrics.Mean(name="log_likelihood")
+        self.log_det_tracker = keras.metrics.Mean(name="log_det")
+        
         self.layers_list = [Coupling(2) for i in range(num_coupling_layers)]  #Questa lista contiene num_coupling_layers strati di accoppiamento, ciascuno creato utilizzando la funzione Coupling(2). Ogni strato trasforma l'input tramite la combinazione di reti di traslazione e scalatura, come visto in precedenza. 
     
     # Ogni strato di accoppiamento nella lista self.layers_list trasforma l'input utilizzando le reti di scalatura e traslazione (s_layers e t_layers). 
@@ -147,7 +150,7 @@ class RealNVP(keras.Model):
         so that `fit()` and `evaluate()` are able to `reset()` the loss tracker
         at the start of each epoch and at the start of an `evaluate()` call.
         """
-        return [self.loss_tracker]
+        return [self.loss_tracker, self.log_likelihood_tracker, self.log_det_tracker]
 
     def call(self, x, training=True):  #training: Un booleano che indica se il modello è in fase di addestramento (True) o inferenza (False). Questo influenza la direzione delle trasformazioni.
         log_det_inv = 0   #Questa variabile accumula il logaritmo del determinante jacobiano della trasformazione invertibile. Il determinante del Jacobiano tiene traccia della modifica di volume in ogni passaggio della trasformazione.
@@ -170,28 +173,57 @@ class RealNVP(keras.Model):
 
         return x, log_det_inv
 
+
     # Log likelihood of the normal distribution plus the log determinant of the jacobian.
 
     def log_loss(self, x):
         y, logdet = self(x)
         log_likelihood = self.distribution.log_prob(y) + logdet
-        return -tf.reduce_mean(log_likelihood)
+
+        tf.print("log_prob:", self.distribution.log_prob(y))
+    
+        # Return separate components
+        return -tf.reduce_mean(log_likelihood), -tf.reduce_mean(logdet)
 
     def train_step(self, data):
         with tf.GradientTape() as tape:
-            loss = self.log_loss(data)
+            log_likelihood, log_det = self.log_loss(data)
+
+            # Total loss is the sum of log-likelihood and the log-det term
+            loss = log_likelihood + log_det
 
         g = tape.gradient(loss, self.trainable_variables)
         self.optimizer.apply_gradients(zip(g, self.trainable_variables))
+        
+        # Update all trackers
         self.loss_tracker.update_state(loss)
+        self.log_likelihood_tracker.update_state(log_likelihood)
+        self.log_det_tracker.update_state(log_det)
 
-        return {"loss": self.loss_tracker.result()}
+        # Return all tracked metrics
+        return {
+            "loss": self.loss_tracker.result(),
+            "log_likelihood": self.log_likelihood_tracker.result(),
+            "log_det": self.log_det_tracker.result(),
+        }
 
     def test_step(self, data):
-        loss = self.log_loss(data)
-        self.loss_tracker.update_state(loss)
+        log_likelihood, log_det = self.log_loss(data)
+        loss = log_likelihood + log_det
 
-        return {"loss": self.loss_tracker.result()}
+        # Update all trackers
+        self.loss_tracker.update_state(loss)
+        self.log_likelihood_tracker.update_state(log_likelihood)
+        self.log_det_tracker.update_state(log_det)
+
+        # Return all tracked metrics
+        return {
+            "loss": self.loss_tracker.result(),
+            "log_likelihood": self.log_likelihood_tracker.result(),
+            "log_det": self.log_det_tracker.result(),
+        }
+
+    
 
 
 """
