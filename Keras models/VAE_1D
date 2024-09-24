@@ -33,6 +33,10 @@ import seaborn as sns
 from sklearn.manifold import MDS, TSNE
 from sklearn.decomposition import PCA
 
+from sklearn.metrics import roc_curve, auc
+from sklearn.preprocessing import label_binarize
+from sklearn.metrics import roc_auc_score
+
 
 #VAE for DT
 
@@ -368,6 +372,10 @@ class VAE(keras.Model):
         return reconstructed, classified
 
 
+"""
+## Funzioni utili
+"""
+
 
 def plot_label_clusters(vae, data, labels):
     # display a 2D plot of the digit classes in the latent space
@@ -466,7 +474,7 @@ def plot_label_clusters_3d(vae, data, labels):
 
 
 
-def plot_variances_by_class(vae, data1, data2, data3, n_class=8):
+def plot_variances_by_class(vae, data1, data2, data3):
     # Estrai z_log_var per ciascun dataset
     _, z_log_var1, _ = vae.encoder.predict(data1, verbose=0)
     _, z_log_var2, _ = vae.encoder.predict(data2, verbose=0)
@@ -502,21 +510,21 @@ def plot_variances_by_class(vae, data1, data2, data3, n_class=8):
         class_variances2 = variances2[class_indices_2]
         class_variances3 = variances3[class_indices_3]
 
-        # Plotta i 3 istogrammi sovrapposti (uno per ciascun dataset)
-        if len(class_variances1) > 0:
-            axes[i].hist(class_variances1.flatten(), bins=30, alpha=0.5, color='blue', edgecolor='black', label='Data1 = meno rumoroso')
-        if len(class_variances2) > 0:
-            axes[i].hist(class_variances2.flatten(), bins=30, alpha=0.5, color='orange', edgecolor='black', label='Data2 = medio rumoroso')
-        if len(class_variances3) > 0:
-            axes[i].hist(class_variances3.flatten(), bins=30, alpha=0.5, color='green', edgecolor='black', label='Data3 = più rumoroso')
-
-        # # Plotta le curve di densità per ciascun dataset (KDE)
+        # # Plotta i 3 istogrammi sovrapposti (uno per ciascun dataset)
         # if len(class_variances1) > 0:
-        #     sns.kdeplot(class_variances1.flatten(), ax=axes[i], color='blue', label='Data1 = meno rumoroso', fill=True)
+        #     axes[i].hist(class_variances1.flatten(), bins=30, alpha=0.5, color='blue', edgecolor='black', label='Data1 = meno rumoroso')
         # if len(class_variances2) > 0:
-        #     sns.kdeplot(class_variances2.flatten(), ax=axes[i], color='orange', label='Data2 = medio rumoroso', fill=True)
+        #     axes[i].hist(class_variances2.flatten(), bins=30, alpha=0.5, color='orange', edgecolor='black', label='Data2 = medio rumoroso')
         # if len(class_variances3) > 0:
-        #     sns.kdeplot(class_variances3.flatten(), ax=axes[i], color='green', label='Data3 = più rumoroso', fill=True)
+        #     axes[i].hist(class_variances3.flatten(), bins=30, alpha=0.5, color='green', edgecolor='black', label='Data3 = più rumoroso')
+
+        # Plotta le curve di densità per ciascun dataset (KDE)
+        if len(class_variances1) > 0:
+            sns.kdeplot(class_variances1.flatten(), ax=axes[i], color='blue', label='Data1 = meno rumoroso')
+        if len(class_variances2) > 0:
+            sns.kdeplot(class_variances2.flatten(), ax=axes[i], color='orange', label='Data2 = medio rumoroso')
+        if len(class_variances3) > 0:
+            sns.kdeplot(class_variances3.flatten(), ax=axes[i], color='green', label='Data3 = più rumoroso')
         
         # Titolo per ciascun sottografo
         axes[i].set_title(f'Class {i} Variance Distribution')
@@ -539,10 +547,65 @@ def plot_variances_by_class(vae, data1, data2, data3, n_class=8):
 
 
 
-def plot_class_transition_heatmap(vae, data1, data2):
-    # Prevedi le classi per i due dataset
-    z_mean1, z_log_var1, _ = vae.encoder.predict(data1, verbose=0)
-    z_mean2, z_log_var2, _ = vae.encoder.predict(data2, verbose=0)
+
+def plot_means_by_class(vae, data1, data2, data3):
+    # Estrai z_mean per ciascun dataset
+    z_mean1, _, _ = vae.encoder.predict(data1, verbose=0)
+    z_mean2, _, _ = vae.encoder.predict(data2, verbose=0)
+    z_mean3, _, _ = vae.encoder.predict(data3, verbose=0)
+
+    X_test_reconstructed_1, X_test_classified_1 = vae.predict(data1)
+    X_test_reconstructed_2, X_test_classified_2 = vae.predict(data2)
+    X_test_reconstructed_3, X_test_classified_3 = vae.predict(data3)
+
+    predicted_classes_1 = np.argmax(X_test_classified_1, axis=1)
+    predicted_classes_2 = np.argmax(X_test_classified_2, axis=1)
+    predicted_classes_3 = np.argmax(X_test_classified_3, axis=1)
+
+    # Crea una figura con 8 sottografi (2x4 griglia)
+    fig, axes = plt.subplots(2, 4, figsize=(20, 10))
+    axes = axes.flatten()
+
+    # Plotta per ciascuna classe
+    for i in range(n_class):
+        # Seleziona i dati appartenenti alla classe i per ciascun dataset
+        class_indices_1 = np.where(predicted_classes_1 == i)[0]
+        class_indices_2 = np.where(predicted_classes_2 == i)[0]
+        class_indices_3 = np.where(predicted_classes_3 == i)[0]
+
+        # Estrai le medie per ciascuna classe in ciascun dataset
+        class_means1 = z_mean1[class_indices_1]
+        class_means2 = z_mean2[class_indices_2]
+        class_means3 = z_mean3[class_indices_3]
+
+        # Plotta le curve di densità per ciascun dataset (KDE)
+        if len(class_means1) > 0:
+            sns.kdeplot(class_means1.flatten(), ax=axes[i], color='blue', label='Data1 = meno rumoroso')
+        if len(class_means2) > 0:
+            sns.kdeplot(class_means2.flatten(), ax=axes[i], color='orange', label='Data2 = medio rumoroso')
+        if len(class_means3) > 0:
+            sns.kdeplot(class_means3.flatten(), ax=axes[i], color='green', label='Data3 = più rumoroso')
+
+        # Titolo per ciascun sottografo
+        axes[i].set_title(f'Class {i} Mean Distribution')
+
+        # Etichette per gli assi
+        axes[i].set_xlabel('Mean')
+        axes[i].set_ylabel('Density')
+
+        # Aggiungi legenda
+        axes[i].legend()
+
+    # Aggiusta la spaziatura tra i sottografi
+    plt.tight_layout()
+
+    # Salva il grafico come file
+    plt.savefig('output_VAE_1D/class_mean_histograms.png')
+
+    # Mostra il grafico
+    plt.show()
+
+
 
 
 
@@ -556,14 +619,25 @@ def plot_class_transition_heatmap(vae, data1, data2):
     predicted_classes_1 = np.argmax(X_test_classified_1, axis=1)
     predicted_classes_2 = np.argmax(X_test_classified_2, axis=1)
 
-    # Seleziona un esempio casuale 
-    idx = np.random.randint(0, data1.shape[0])
+    #Plot differenza di un signal random
+    idx = np.random.randint(0, X_test.shape[0])
     original_signal = data1[idx]
     reconstructed_signal = data2[idx]
 
-    # Plot dei segnali
-    plt.plot(original_signal.flatten(), label='Meno rumore')
-    plt.plot(reconstructed_signal.flatten(), label='Più rumore')
+    # Calcola la differenza tra il segnale originale e quello ricostruito
+    difference_signal = original_signal - reconstructed_signal
+
+    plt.figure(figsize=(10, 6))
+
+    # Plot del segnale originale con trasparenza
+    plt.plot(original_signal.flatten(), label='Meno rumoroso', color='blue', alpha=0.5)
+
+    # Plot del segnale ricostruito con trasparenza
+    plt.plot(reconstructed_signal.flatten(), label='Più rumoroso', color='orange', alpha=0.5)
+
+    # Plot della differenza tra i due segnali (linea piena e nera)
+    plt.plot(difference_signal.flatten(), label='Differenza', color='black')
+
     plt.legend()
     plt.title(f"Segnale Meno Rumore vs Segnale Più Rumore - Esempio {idx}")
     plt.show()
@@ -666,6 +740,118 @@ def variation_mean_and_var(vae, data1, data2):
 
 
 
+def plot_confidence_histogram(probabilities):
+    # Prendi la probabilità massima per ciascuna predizione
+    max_probabilities = np.max(probabilities, axis=1)
+    
+    # Plot dell'istogramma
+    plt.figure(figsize=(8, 6))
+    plt.hist(max_probabilities, bins=50, range=(0, 1), alpha=0.7, color='b')
+    plt.title('Istogramma della confidenza delle previsioni')
+    plt.xlabel('Confidenza (probabilità massima)')
+    plt.ylabel('Frequenza')
+    plt.grid(True)
+    plt.show()
+
+def plot_confidence_histogram_per_class(probabilities, predicted_labels):
+    # Creiamo una figura con 8 sottotrame (2 righe x 4 colonne)
+    fig, axes = plt.subplots(2, 4, figsize=(20, 10))
+    axes = axes.ravel()  # Rende il grid facilmente accessibile con un array 1D
+
+    for i in range(n_class):
+        # Filtra le probabilità per la classe vera i
+        class_probabilities = probabilities[predicted_labels == i]
+        max_probabilities = np.max(class_probabilities, axis=1)
+        
+        # Plot dell'istogramma nella sottotrama i
+        axes[i].hist(max_probabilities, bins=50, range=(0, 1), alpha=0.7, color='b')
+        axes[i].set_title(f'Classe {i}')
+        axes[i].set_xlabel('Confidenza (probabilità massima)')
+        axes[i].set_ylabel('Frequenza')
+        axes[i].grid(True)
+    
+    # Aggiustiamo lo spazio tra le sottotrame
+    plt.tight_layout()
+    plt.show()
+
+
+
+
+
+def plot_margin_histogram(probabilities):
+    # Ordina le probabilità in ordine decrescente lungo l'asse delle classi
+    sorted_probabilities = np.sort(probabilities, axis=1)
+    
+    # Differenza tra la prima e la seconda probabilità più alta
+    margin = sorted_probabilities[:, -1] - sorted_probabilities[:, -2]
+    
+    # Plot dell'istogramma del margine
+    plt.figure(figsize=(8, 6))
+    plt.hist(margin, bins=50, range=(0, 1), alpha=0.7, color='g')
+    plt.title('Istogramma del margine tra prima e seconda probabilità più alta')
+    plt.xlabel('Margine di confidenza')
+    plt.ylabel('Frequenza')
+    plt.grid(True)
+    plt.show()
+
+def plot_margin_histogram_per_class(probabilities, predicted_labels):
+    # Creiamo una figura con 8 sottotrame (2 righe x 4 colonne)
+    fig, axes = plt.subplots(2, 4, figsize=(20, 10))
+    axes = axes.ravel()  # Rende il grid facilmente accessibile con un array 1D
+
+    for i in range(n_class):
+        # Filtra le probabilità per la classe vera i
+        class_probabilities = probabilities[predicted_labels == i]
+        sorted_probabilities = np.sort(class_probabilities, axis=1)
+        
+        # Differenza tra la prima e la seconda probabilità più alta
+        margin = sorted_probabilities[:, -1] - sorted_probabilities[:, -2]
+        
+        # Plot dell'istogramma nella sottotrama i
+        axes[i].hist(margin, bins=50, range=(0, 1), alpha=0.7, color='g')
+        axes[i].set_title(f'Classe {i}')
+        axes[i].set_xlabel('Margine di confidenza')
+        axes[i].set_ylabel('Frequenza')
+        axes[i].grid(True)
+    
+    # Aggiustiamo lo spazio tra le sottotrame
+    plt.tight_layout()
+    plt.show()
+
+
+    
+
+
+def plot_roc_curve(true_labels, probabilities):
+    # Binarizza le etichette reali per il calcolo multi-classe
+    true_labels_bin = label_binarize(true_labels, classes=np.arange(n_class))
+    
+    # Plot della curva ROC per ogni classe
+    plt.figure(figsize=(10, 8))
+    for i in range(n_class):
+        fpr, tpr, _ = roc_curve(true_labels_bin[:, i], probabilities[:, i])
+        roc_auc = auc(fpr, tpr)
+        plt.plot(fpr, tpr, label=f'Classe {i} (AUC = {roc_auc:.2f})')
+    
+    plt.plot([0, 1], [0, 1], 'k--')  # Linea diagonale di random guess
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Curva ROC multi-classe')
+    plt.legend(loc="lower right")
+    plt.grid(True)
+    plt.show()
+
+    # Calcola l'AUC medio
+    auc_score = roc_auc_score(true_labels_bin, probabilities, average="macro", multi_class="ovr")
+    print(f'AUC medio: {auc_score:.2f}')
+
+
+
+
+
+
 
 
 
@@ -759,12 +945,13 @@ if train_or_predict:
 
 
 else:
+
     """
     ## Predict
     """
 
     # Caricamento dei dati di test
-    X_test, labels_test, N_ist_test = read_data(path_data_test, 5)
+    X_test, labels_test, N_ist_test = read_data(path_data_test, 20)
 
     print(f"Forma di X_test: {X_test.shape}")
 
@@ -821,25 +1008,30 @@ else:
     # plt.show()
 
 
-    """
-    ## Analisi del latent space
-    """
-    X_test_2, labels_test_2, N_ist_test_2 = read_data(path_data_test, 100)
-    # test_dataset_2 = tf.data.Dataset.from_tensor_slices((X_test_2, labels_test_2))
-    # test_dataset_2 = test_dataset_2.batch(batch_size)
+    # Seleziona un esempio casuale
+    # idx = np.random.randint(0, X_test.shape[0])
+    # original_signal = X_test[idx]
+    # reconstructed_signal = X_test_reconstructed[idx]
 
-    X_test_3, labels_test_3, N_ist_test_3 = read_data(path_data_test, 5)
-    # test_dataset_3 = tf.data.Dataset.from_tensor_slices((X_test_3, labels_test_3))
-    # test_dataset_3 = test_dataset_3.batch(batch_size)
+    # # Calcola la differenza tra il segnale originale e quello ricostruito
+    # difference_signal = original_signal - reconstructed_signal
 
-    # plot_label_clusters_3d(vae, X_test, predicted_classes)   #Plotta il clustering rispetto al label classificato dei dati test nello spazio latente
+    # plt.figure(figsize=(10, 6))
 
-    # plot_variances_by_class(vae, X_test, X_test_2, X_test_3)
+    # # Plot del segnale originale con trasparenza
+    # plt.plot(original_signal.flatten(), label='Originale', color='blue', alpha=0.5)
 
-    # plot_class_transition_heatmap(vae, X_test_2, X_test_3)
+    # # Plot del segnale ricostruito con trasparenza
+    # plt.plot(reconstructed_signal.flatten(), label='Ricostruito', color='orange', alpha=0.5)
 
-    df = variation_mean_and_var(vae, X_test_2, X_test_3)
-    df.to_csv('output_VAE_1D/variation_results.csv', index=False)
+    # # Plot della differenza tra i due segnali (linea piena e nera)
+    # plt.plot(difference_signal.flatten(), label='Differenza', color='black')
+
+    # plt.legend()
+    # plt.title(f"Segnale Originale vs Ricostruito - Esempio {idx}")
+    # plt.show()
+
+
 
     """
     ## Analisi della classificazione
@@ -879,3 +1071,32 @@ else:
 
     # Mostra il grafico
     plt.show()
+
+
+
+    """
+    ## Analisi ulteriori
+    """
+    X_test_2, labels_test_2, N_ist_test_2 = read_data(path_data_test, 100)
+    # test_dataset_2 = tf.data.Dataset.from_tensor_slices((X_test_2, labels_test_2))
+    # test_dataset_2 = test_dataset_2.batch(batch_size)
+
+    X_test_3, labels_test_3, N_ist_test_3 = read_data(path_data_test, 20)
+    # test_dataset_3 = tf.data.Dataset.from_tensor_slices((X_test_3, labels_test_3))
+    # test_dataset_3 = test_dataset_3.batch(batch_size)
+
+    # plot_label_clusters_3d(vae, X_test, predicted_classes)   #Plotta il clustering rispetto al label classificato dei dati test nello spazio latente
+
+    plot_class_transition_heatmap(vae, X_test_2, X_test_3)
+
+    plot_variances_by_class(vae, X_test, X_test_2, X_test_3)
+    plot_means_by_class(vae, X_test, X_test_2, X_test_3)
+
+    df = variation_mean_and_var(vae, X_test_2, X_test_3)
+    
+
+    
+    # plot_confidence_histogram_per_class(X_test_classified, predicted_classes)
+    # plot_margin_histogram_per_class(X_test_classified, predicted_classes)
+
+    # plot_roc_curve(labels_test, X_test_classified)

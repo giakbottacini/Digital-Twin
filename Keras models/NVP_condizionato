@@ -484,16 +484,60 @@ class RealNVP(keras.Model):
             # Aggiungi il risultato alla lista
             all_log_likelihoods.append(log_likelihood)
 
-            # Stampa la forma di ogni tensore nella lista prima della concatenazione
-        for likelihood in all_log_likelihoods:
-            print(likelihood.shape)
-
         # Concatena tutte le log-likelihoods per restituire un risultato finale
         return tf.stack(all_log_likelihoods, axis=1)
 
+
+
+
+"""
+## Funzioni utili
+"""
+
+
+def plot_class_transition_heatmap(NVP, data1, data2):
+
+    log_likelihoods_1 = NVP.predict_for_all_labels(data1)
+    log_likelihoods_2 = NVP.predict_for_all_labels(data2)
+
+    # Predizione delle classi usando la log-likelihood massima
+    predicted_classes_1 = tf.argmax(log_likelihoods_1, axis=1).numpy()
+    predicted_classes_2 = tf.argmax(log_likelihoods_2, axis=1).numpy()
+
+    # Seleziona un esempio casuale 
+    idx = np.random.randint(0, data1.shape[0])
+    original_signal = data1[idx]
+    reconstructed_signal = data2[idx]
+
+    # Plot dei segnali
+    plt.plot(original_signal.flatten(), label='Meno rumore')
+    plt.plot(reconstructed_signal.flatten(), label='Più rumore')
+    plt.legend()
+    plt.title(f"Segnale Meno Rumore vs Segnale Più Rumore - Esempio {idx}")
+    plt.show()
+
+    # Costruisci la matrice di transizione (matrice di confusione tra le due predizioni)
+    transition_matrix = confusion_matrix(predicted_classes_1, predicted_classes_2, labels=np.arange(n_class))
+
+    # Plotta la matrice di transizione come heatmap
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(transition_matrix, annot=True, fmt='d', cmap='Blues', xticklabels=np.arange(n_class), yticklabels=np.arange(n_class))
+    
+    # Etichette e titolo
+    plt.title("Class Transition Matrix (Data1 vs Data2)", fontsize=16)
+    plt.xlabel("Predicted Class (Data2)", fontsize=12)
+    plt.ylabel("Predicted Class (Data1)", fontsize=12)
+
+    # Salva la figura
+    plt.savefig('output_NVP/class_transition_heatmap.png')
+
+    # Mostra il grafico
+    plt.show()
+
+
         
 
-train_or_predict = 1   # 1: training, 0: predict                                       
+train_or_predict = 0   # 1: training, 0: predict                                       
 
 
 if train_or_predict:
@@ -578,17 +622,15 @@ else:
     output_dir = "output_NVP"
 
     # Caricamento dei dati di test
-    X_test, labels_test, N_ist_test = read_data(path_data_test, 100)
+    X_test, labels_test, N_ist_test = read_data(path_data_test, 20)
 
-    X_test = X_test[:4000]
-    labels_test = labels_test[:4000]
 
     print(f"Forma di X_test: {X_test.shape}")
 
     # Crea una codifica one-hot delle etichette
     labels_test = tf.cast(labels_test, tf.int64)
     labels_test_one_hot = tf.one_hot(labels_test, depth=n_class)
-    print(f"Forma di labels test one hot encoding: {labels_test_one_hot.shape}")
+    #print(f"Forma di labels test one hot encoding: {labels_test_one_hot.shape}")
 
 
     # test_dataset = tf.data.Dataset.from_tensor_slices((X_test, labels_test_one_hot))
@@ -618,7 +660,7 @@ else:
 
     log_likelihoods = NVP.predict_for_all_labels(X_test)
 
-    print(f"Forma di log_likelihoods: {log_likelihoods.shape}")
+    # print(f"Forma di log_likelihoods: {log_likelihoods.shape}")
 
     # Stampa delle prime 5 righe di log_likelihoods
     print("Prime 5 righe di log_likelihoods:")
@@ -678,6 +720,27 @@ else:
 
     # Mostra il grafico
     plt.show()
+
+
+
+
+    """
+    ## Analisi ulteriori
+    """ 
+
+    X_test_2, labels_test_2, N_ist_test_2 = read_data(path_data_test, 100)
+    # test_dataset_2 = tf.data.Dataset.from_tensor_slices((X_test_2, labels_test_2))
+    # test_dataset_2 = test_dataset_2.batch(batch_size)
+
+    X_test_3, labels_test_3, N_ist_test_3 = read_data(path_data_test, 20)
+    # test_dataset_3 = tf.data.Dataset.from_tensor_slices((X_test_3, labels_test_3))
+    # test_dataset_3 = test_dataset_3.batch(batch_size)
+
+    # plot_label_clusters_3d(NVP, X_test, predicted_classes)   #Plotta il clustering rispetto al label classificato dei dati test nello spazio latente
+
+    # plot_variances_by_class(NVP, X_test, X_test_2, X_test_3)
+
+    plot_class_transition_heatmap(NVP, X_test_2, X_test_3)
 
 
 

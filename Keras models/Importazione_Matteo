@@ -39,58 +39,174 @@ def RMS(vect):
     return np.sqrt(np.mean(np.square(vect)))
 
 # Read data and create dataset with only desired classes
-def read_data(path_data):    
+# def read_data(path_data):    
+#     label_path_class = path_data + '/Damage_class.csv'                                
+#     labels_class     = np.genfromtxt(label_path_class)
+#     labels_class     = labels_class.astype('int')
+#     N_ist = len(labels_class)  
+
+#     if accelerations == 1:
+#         path_rec  = path_data + '/U2_concat_'
+#     elif accelerations == 0:
+#         path_rec  = path_data + '/U_concat_'
+
+#     if path_data == path_data_train:
+#         signals_means = np.zeros((n_channels))
+#         signals_stds = np.zeros((n_channels))
+#     else:
+#         signals_means = np.load(path_restore+'\\Corrupted_signals_means.npy')
+#         signals_stds = np.load(path_restore+'\\Corrupted_signals_stds.npy')
+#     # Create the dataset output structure
+#     X       = np.zeros((N_ist, seq_len, n_channels))   #(10000,200,8)
+#     # X_noise = np.zeros((N_ist, seq_len, n_channels))
+#     for i1 in range(n_channels):
+#         path_data_var  = path_rec + str(which_channels[i1]) + '.csv'
+#         X_singledof = pd.read_csv(path_data_var, header=None).to_numpy()[:,0]
+#         for i2 in range(N_ist):
+#             # RESHAPE THE SIGNALS
+#             X[i2,:,i1]= X_singledof[1 + i2*(1+seq_len) : (i2+1)*(1+seq_len)]
+#             # # CORRUPT THE SIGNALS
+#             # rms_signal = RMS(X[i2,:,i1])
+#             # dev_std    = rms_signal / np.sqrt(addedd_SNR)
+#             # sample = st.norm(0, dev_std)
+#             # X_noise[i2,:,i1] = X[i2,:,i1] + sample.rvs(size=seq_len)
+#         if path_data == path_data_train:
+#             # COMPUTE STATISTICS FOR EACH CHANNEL
+#             # signals_means[i1] = np.mean(np.reshape(X_noise[:,:,i1], (N_ist*seq_len)))
+#             # signals_stds[i1] = np.std(np.reshape(X_noise[:,:,i1], (N_ist*seq_len)))
+#             signals_means[i1] = np.mean(np.reshape(X[:,:,i1], (N_ist*seq_len)))
+#             signals_stds[i1] = np.std(np.reshape(X[:,:,i1], (N_ist*seq_len)))
+
+#         # NORMALIZE THE SIGNALS    
+#         # X_noise[:,:,i1] = (X_noise[:,:,i1] - signals_means[i1])/signals_stds[i1]
+#         X[:,:,i1] = (X[:,:,i1] - signals_means[i1])/signals_stds[i1]
+   
+#     # if path_data == path_data_train:    
+#     #     np.save(path_save+'Corrupted_signals_means', signals_means)
+#     #     np.save(path_save+'Corrupted_signals_stds', signals_stds)
+       
+#     # return X_noise, labels_class, N_ist
+#     return X, labels_class, N_ist
+
+# X_train, labels_train, N_ist_train = read_data(path_data_train)
+
+# print(f"Forma di X_train: {X_train.shape}")
+
+# for i in range(2):  
+#     print(f"Forma della {i+1}° osservazione: {X_train[i].shape}")
+
+
+which_class = 7   # Prendiamo solo i casi in cui il danno è nella regione which_class
+
+num_classi = 5   # Definisci il numero di classi
+
+def read_data(path_data, addedd_SNR):    
     label_path_class = path_data + '/Damage_class.csv'                                
     labels_class     = np.genfromtxt(label_path_class)
     labels_class     = labels_class.astype('int')
-    N_ist = len(labels_class)  
-
+    label_path_level = path_data + '/Damage_level.csv'                                
+    labels_level     = np.genfromtxt(label_path_level)
+    N_ist = len(labels_level)  
     if accelerations == 1:
         path_rec  = path_data + '/U2_concat_'
     elif accelerations == 0:
         path_rec  = path_data + '/U_concat_'
-
     if path_data == path_data_train:
         signals_means = np.zeros((n_channels))
         signals_stds = np.zeros((n_channels))
     else:
-        signals_means = np.load(path_restore+'\\Corrupted_signals_means.npy')
-        signals_stds = np.load(path_restore+'\\Corrupted_signals_stds.npy')
+        signals_means = np.load(path_restore+'/Corrupted_signals_means.npy')
+        signals_stds = np.load(path_restore+'/Corrupted_signals_stds.npy')
     # Create the dataset output structure
-    X       = np.zeros((N_ist, seq_len, n_channels))   #(10000,200,8)
-    # X_noise = np.zeros((N_ist, seq_len, n_channels))
+    X       = np.zeros((N_ist, seq_len, n_channels))
     for i1 in range(n_channels):
         path_data_var  = path_rec + str(which_channels[i1]) + '.csv'
         X_singledof = pd.read_csv(path_data_var, header=None).to_numpy()[:,0]
         for i2 in range(N_ist):
             # RESHAPE THE SIGNALS
-            X[i2,:,i1]= X_singledof[1 + i2*(1+seq_len) : (i2+1)*(1+seq_len)]
-            # # CORRUPT THE SIGNALS
-            # rms_signal = RMS(X[i2,:,i1])
-            # dev_std    = rms_signal / np.sqrt(addedd_SNR)
-            # sample = st.norm(0, dev_std)
-            # X_noise[i2,:,i1] = X[i2,:,i1] + sample.rvs(size=seq_len)
-        if path_data == path_data_train:
-            # COMPUTE STATISTICS FOR EACH CHANNEL
-            # signals_means[i1] = np.mean(np.reshape(X_noise[:,:,i1], (N_ist*seq_len)))
-            # signals_stds[i1] = np.std(np.reshape(X_noise[:,:,i1], (N_ist*seq_len)))
-            signals_means[i1] = np.mean(np.reshape(X[:,:,i1], (N_ist*seq_len)))
-            signals_stds[i1] = np.std(np.reshape(X[:,:,i1], (N_ist*seq_len)))
+            X[i2,:,i1]= X_singledof[1 + i2*(1+seq_len) : (i2+1)*(1+seq_len)]  
 
-        # NORMALIZE THE SIGNALS    
-        # X_noise[:,:,i1] = (X_noise[:,:,i1] - signals_means[i1])/signals_stds[i1]
-        X[:,:,i1] = (X[:,:,i1] - signals_means[i1])/signals_stds[i1]
+    # remove all the data relative except the which_class case
+    i1 = 0
+    i2 = 0
+    while i1<N_ist:
+        if not labels_class[i1] == which_class:
+            labels_level = np.delete(labels_level, i1-i2, 0)
+            X = np.delete(X, i1-i2, 0)
+            i2+=1
+        i1+=1
    
-    # if path_data == path_data_train:    
-    #     np.save(path_save+'Corrupted_signals_means', signals_means)
-    #     np.save(path_save+'Corrupted_signals_stds', signals_stds)
+   
+    N_ist = len(labels_level)
+    X_noise = np.zeros((N_ist, seq_len, n_channels))
+    for i1 in range(n_channels):
+        for i2 in range(N_ist):
+            # CORRUPT THE SIGNALS
+            rms_signal = RMS(X[i2,:,i1])
+            dev_std    = rms_signal / np.sqrt(addedd_SNR)
+            sample = st.norm(0, dev_std)
+            X_noise[i2,:,i1] = X[i2,:,i1] + sample.rvs(size=seq_len)
+   
+    if path_data == path_data_train:
+        # COMPUTE STATISTICS FOR EACH CHANNEL
+        for i1 in range(n_channels):
+            signals_means[i1] = np.mean(np.reshape(X_noise[:,:,i1], (N_ist*seq_len)))
+            signals_stds[i1] = np.std(np.reshape(X_noise[:,:,i1], (N_ist*seq_len)))
+        np.save(path_save+'Corrupted_signals_means', signals_means)
+        np.save(path_save+'Corrupted_signals_stds', signals_stds)
+        level_mean = np.mean(labels_level)
+        level_std  = np.std(labels_level)
+        np.save(path_save+'Damage_level_mean', level_mean)
+        np.save(path_save+'Damage_level_std', level_std)
+        labels_level = (labels_level - level_mean)/level_std
+   
+    # NORMALIZE THE SIGNALS    
+    for i1 in range(n_channels):
+        X_noise[:,:,i1] = (X_noise[:,:,i1] - signals_means[i1])/signals_stds[i1]
+
+    
+    # Trova il valore minimo e massimo in labels_train
+    min_val = np.min(labels_level)
+    max_val = np.max(labels_level)
+
+    # Suddividi labels_train in 5 classi (range uniformi) (ho visto che in questo modo le classi sono uniformi)
+    bins = np.linspace(min_val, max_val, num_classi+1)
+
+    # Usa np.digitize per assegnare a ciascun valore la sua classe
+    labels_classi = np.digitize(labels_level, bins, right=True)
+
+    # Assicuriamoci che i valori siano compresi tra 1 e 5
+    labels_classi = np.clip(labels_classi, 1, num_classi)
+
+    # Sottrai 1 per convertire le classi da 1-5 a 0-4
+    labels_classi -= 1
        
-    # return X_noise, labels_class, N_ist
-    return X, labels_class, N_ist
+    return X_noise, labels_classi, N_ist
 
-X_train, labels_train, N_ist_train = read_data(path_data_train)
 
-print(f"Forma di X_train: {X_train.shape}")
+X_train, labels_train, N_ist_train = read_data(path_data_train, 1000)
 
-for i in range(2):  
-    print(f"Forma della {i+1}° osservazione: {X_train[i].shape}")
+print("Shape di X_train:")
+print(X_train.shape)
+
+# Stampa delle prime 5 righe di labels_train
+print("Prime 5 righe di labels_train:")
+print(labels_train[:15])
+
+print(max(labels_train))
+print(min(labels_train))
+
+
+# Creiamo un grafico a barre per labels_train (valori discreti)
+unique, counts = np.unique(labels_train, return_counts=True)  # Trova i valori unici e le rispettive frequenze
+
+plt.figure(figsize=(8, 6))
+plt.bar(unique, counts, edgecolor='black')  # Usa un grafico a barre per rappresentare le frequenze dei valori discreti
+plt.title('Distribuzione di labels_train')
+plt.xlabel('Valore di labels_train')
+plt.ylabel('Frequenza')
+plt.xticks(unique)  # Mostra solo i valori discreti presenti in labels_train
+plt.grid(True, axis='y')  # Griglia solo sull'asse delle y
+plt.show()
+
+
