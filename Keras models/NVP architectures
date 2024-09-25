@@ -1,0 +1,376 @@
+import tensorflow as tf
+from tensorflow import keras
+from keras import layers
+from keras import regularizers
+import numpy as np
+import matplotlib.pyplot as plt
+import tensorflow_probability as tfp
+
+
+# Struttura con enhancements ispirata da dinh2017density
+def residual_block(x, filters, kernel_size, dilation_rate=1):
+    """Blocco residuo con convoluzione dilatata"""
+    shortcut = x  # Connessione diretta
+
+    # Se il numero di filtri non corrisponde, usa una convoluzione 1x1 per adattare la dimensione
+    if x.shape[-1] != filters:  # Se il numero di canali non è uguale
+        shortcut = layers.Conv1D(filters=filters, kernel_size=1, padding='same')(shortcut)
+    
+    # Prima convoluzione dilatata
+    x = layers.Conv1D(filters=filters, kernel_size=kernel_size, dilation_rate=dilation_rate,
+                      padding='same', activation='relu', kernel_regularizer=regularizers.l2(0.01))(x)
+    x = layers.BatchNormalization()(x)  # Aggiungi Batch Normalization
+    
+    # Seconda convoluzione dilatata
+    x = layers.Conv1D(filters=filters, kernel_size=kernel_size, dilation_rate=dilation_rate,
+                      padding='same', activation='relu', kernel_regularizer=regularizers.l2(0.01))(x)
+    x = layers.BatchNormalization()(x)  # Aggiungi Batch Normalization
+
+    # Connessione residuale
+    x = layers.Add()([shortcut, x])  # Somma la connessione residuale
+    return layers.Activation('relu')(x)
+
+
+def Coupling(input_shape=(200, 8), num_classes=n_class, reg=0.01):
+    input_x = layers.Input(shape=input_shape, name='Input_X')
+    input_y = layers.Input(shape=(num_classes,), name='Input_Label')
+    
+    # Rete condizionale sui label
+    label_condition = layers.Dense(32, activation='relu')(input_y)
+    label_condition = layers.Dense(64, activation='relu')(label_condition)
+    label_condition = layers.Dense(128, activation='relu')(label_condition)
+    label_embedding = layers.Dense(256, activation='relu')(label_condition) 
+
+    # Blocchi convoluzionali residui con convoluzioni dilatate
+    x = layers.Conv1D(filters=32, kernel_size=3, padding='same', activation='relu')(input_x)
+    x = residual_block(x, filters=32, kernel_size=3, dilation_rate=2)  # Primo blocco residuo
+    x = layers.MaxPooling1D()(x)  # Downsampling
+    
+    x = residual_block(x, filters=64, kernel_size=3, dilation_rate=4)  # Secondo blocco residuo
+    x = layers.MaxPooling1D()(x)  # Downsampling
+    
+    x = residual_block(x, filters=128, kernel_size=3, dilation_rate=8)  # Terzo blocco residuo
+    x = layers.MaxPooling1D()(x)  # Downsampling
+    
+    x = layers.Flatten()(x)
+
+    # Livelli per la componente t (traslazione)
+    t = layers.Dense(128, activation="relu", kernel_regularizer=regularizers.l2(reg))(x)
+    t_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+    t = layers.Concatenate()([t, t_embedding])
+    t = layers.Dense(input_shape[0] * input_shape[1], activation="linear", kernel_regularizer=regularizers.l2(reg))(t)
+    t_reshaped = layers.Reshape(input_shape)(t)
+
+    # Livelli per la componente s (scalatura)
+    s = layers.Dense(128, activation="relu", kernel_regularizer=regularizers.l2(reg))(x)
+    s_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+    s = layers.Concatenate()([s, s_embedding])
+    s = layers.Dense(input_shape[0] * input_shape[1], activation="tanh", kernel_regularizer=regularizers.l2(reg))(s)
+    s_reshaped = layers.Reshape(input_shape)(s)
+
+    return keras.Model(inputs=[input_x, input_y], outputs=[s_reshaped, t_reshaped])
+
+
+
+# Mia struttura con un grandissimo condizionamento  (forse non funziona poi)
+def conditioned_conv1d(x, label_embedding, filters, kernel_size, dilation_rate=1):
+    # Usa Lambda layer per espandere e ripetere label_embedding
+    label_repeated = layers.Lambda(lambda z: tf.repeat(tf.expand_dims(z, 1), repeats=x.shape[1], axis=1))(label_embedding)
+    
+    # Concatenazione del label lungo i canali
+    x = layers.Concatenate()([x, label_repeated])
+
+    # Applica convoluzione condizionata
+    x = layers.Conv1D(filters=filters, kernel_size=kernel_size, dilation_rate=dilation_rate,
+                      padding='same', kernel_regularizer=regularizers.l2(0.01),
+                      activation='relu')(x)
+    x = layers.BatchNormalization()(x)
+    
+    return x
+
+def Coupling(input_shape=(200, 8), num_classes=n_class, reg=0.01):
+    # Input con shape (200, 8), ovvero 200 time steps con 8 feature per step
+    input_x = layers.Input(shape=input_shape, name='Input_X')
+    input_y = layers.Input(shape=(num_classes,), name='Input_Label')
+    
+    # Network per condizionare s e t in funzione del label y
+    # Uso un embedding più complesso per il label
+    label_condition = layers.Dense(64, activation='relu')(input_y)
+    label_condition = layers.Dense(128, activation='relu')(label_condition)
+    label_embedding = layers.Dense(256, activation='relu')(label_condition)  # Embedding finale del label
+    
+    # Batch Normalization e Dropout per stabilizzare l'apprendimento
+    label_embedding = layers.BatchNormalization()(label_embedding)
+    label_embedding = layers.Dropout(0.3)(label_embedding)  # Aggiungi Dropout per evitare overfitting
+
+    # Blocchi convoluzionali per l'estrazione di caratteristiche temporali condizionate
+    # Usando FiLM o concatenazione diretta all'interno delle convoluzioni
+    
+    # Layer convoluzionali condizionati dai label
+    x = conditioned_conv1d(input_x, label_embedding, filters=32, kernel_size=3, dilation_rate=1)
+    x = layers.MaxPooling1D()(x)
+    x = conditioned_conv1d(x, label_embedding, filters=64, kernel_size=3, dilation_rate=2)
+    x = layers.MaxPooling1D()(x)
+    x = conditioned_conv1d(x, label_embedding, filters=128, kernel_size=3, dilation_rate=4)
+    x = layers.MaxPooling1D()(x)
+
+    # Flatten per passare ai layer densi
+    x = layers.Flatten()(x)
+
+    # Livelli densi per la componente t (traslazione)
+    t = layers.Dense(128, activation="relu", kernel_regularizer=regularizers.l2(reg))(x)
+    t_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+    t = layers.Concatenate()([t, t_embedding])  # Condizionamento
+    t = layers.Dense(input_shape[0] * input_shape[1], activation="linear", kernel_regularizer=regularizers.l2(reg))(t)
+    t_reshaped = layers.Reshape(input_shape)(t)
+
+    # Livelli densi per la componente s (scalatura)
+    s = layers.Dense(128, activation="relu", kernel_regularizer=regularizers.l2(reg))(x)
+    s_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+    s = layers.Concatenate()([s, s_embedding])  # Condizionamento
+    s = layers.Dense(input_shape[0] * input_shape[1], activation="tanh", kernel_regularizer=regularizers.l2(reg))(s)
+    s_reshaped = layers.Reshape(input_shape)(s)
+
+    return keras.Model(inputs=[input_x, input_y], outputs=[s_reshaped, t_reshaped])
+
+
+
+
+
+
+
+# Mia struttura con primo Enhancement del layer embedding   accuracy 0.8 (un po' di overfitting)
+def Coupling(input_shape=(200, 8), num_classes=n_class, reg=0.01):
+    # Input con shape (200, 8), ovvero 200 time steps con 8 feature per step
+    input_x = layers.Input(shape=input_shape, name='Input_X')
+    input_y = layers.Input(shape=(num_classes,), name='Input_Label')
+    
+    # Network per condizionare s e t in funzione del label y
+    # Uso un piccolo MLP per una rappresentazione più complessa dell'embedding delle classi
+    label_condition = layers.Dense(32, activation='relu')(input_y)
+    label_condition = layers.Dense(64, activation='relu')(label_condition)
+    label_condition = layers.Dense(128, activation='relu')(label_condition)
+    label_embedding = layers.Dense(256, activation='relu')(label_condition) 
+
+    # Blocchi convoluzionali per l'estrazione di caratteristiche temporali
+    x = layers.Conv1D(filters=filter_1, kernel_size=kernel_size_1, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_1')(input_x)
+    x = layers.MaxPooling1D()(x)
+    x = layers.Conv1D(filters=filter_2, kernel_size=kernel_size_2, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_2')(x)
+    x = layers.MaxPooling1D()(x)
+    x = layers.Conv1D(filters=filter_3, kernel_size=kernel_size_3, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_3')(x)
+    x = layers.MaxPooling1D()(x)
+    x = layers.Flatten()(x)
+
+    # Livelli densi per la componente t (traslazione) con condizionamento MLP
+    t = keras.layers.Dense(128, activation="relu", kernel_regularizer=regularizers.l2(reg))(x)
+    t_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+    t = layers.Concatenate()([t, t_embedding])  # Condizionamento
+    t = keras.layers.Dense(input_shape[0] * input_shape[1], activation="linear", kernel_regularizer=regularizers.l2(reg))(t)
+    t_reshaped = keras.layers.Reshape(input_shape)(t)
+
+    # Livelli densi per la componente s (scalatura) con condizionamento MLP
+    s = keras.layers.Dense(128, activation="relu", kernel_regularizer=regularizers.l2(reg))(x)
+    s_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+    s = layers.Concatenate()([s, s_embedding])  # Condizionamento
+    s = keras.layers.Dense(input_shape[0] * input_shape[1], activation="tanh", kernel_regularizer=regularizers.l2(reg))(s)
+    s_reshaped = keras.layers.Reshape(input_shape)(s)
+
+    return keras.Model(inputs=[input_x, input_y], outputs=[s_reshaped, t_reshaped])
+
+
+
+# Mia struttura con primo Enhancement del layer embedding ma più fit   
+def Coupling(input_shape=(200, 8), num_classes=n_class, reg=0.01):
+    # Input con shape (200, 8), ovvero 200 time steps con 8 feature per step
+    input_x = layers.Input(shape=input_shape, name='Input_X')
+    input_y = layers.Input(shape=(num_classes,), name='Input_Label')
+    
+    # Network per condizionare s e t in funzione del label y
+    # Uso un piccolo MLP per una rappresentazione più complessa dell'embedding delle classi
+    label_condition = layers.Dense(16, activation='relu')(input_y)
+    label_condition = layers.Dense(32, activation='relu')(label_condition)
+    label_condition = layers.Dense(64, activation='relu')(label_condition)
+    label_embedding = layers.Dense(128, activation='relu')(label_condition) 
+
+    # Blocchi convoluzionali per l'estrazione di caratteristiche temporali
+    x = layers.Conv1D(filters=filter_1, kernel_size=kernel_size_1, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_1')(input_x)
+    x = layers.MaxPooling1D()(x)
+    x = layers.Dropout(0.3)(x)   # Aggiungi Dropout
+    x = layers.Conv1D(filters=filter_2, kernel_size=kernel_size_2, strides=2, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_2')(x)
+    x = layers.Dropout(0.3)(x)  # Aggiungi Dropout
+    x = layers.Conv1D(filters=filter_3, kernel_size=kernel_size_3, strides=2, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_3')(x)
+    x = layers.Dropout(0.3)(x)  # Aggiungi Dropout
+
+    x = layers.Flatten()(x)
+
+    # Livelli densi per la componente t (traslazione) con condizionamento MLP
+    t = keras.layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(k_reg))(x)
+    t_embedding = layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(k_reg))(label_embedding)
+    t = layers.Concatenate()([t, t_embedding])  # Condizionamento
+    t = keras.layers.Dense(input_shape[0] * input_shape[1], activation="linear", kernel_regularizer=regularizers.l2(k_reg))(t)
+    t_reshaped = keras.layers.Reshape(input_shape)(t)
+
+    # Livelli densi per la componente s (scalatura) con condizionamento MLP
+    s = keras.layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(k_reg))(x)
+    s_embedding = layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(k_reg))(label_embedding)
+    s = layers.Concatenate()([s, s_embedding])  # Condizionamento
+    s = keras.layers.Dense(input_shape[0] * input_shape[1], activation="tanh", kernel_regularizer=regularizers.l2(k_reg))(s)
+    s_reshaped = keras.layers.Reshape(input_shape)(s)
+
+    return keras.Model(inputs=[input_x, input_y], outputs=[s_reshaped, t_reshaped])
+
+
+#Mia struttura con primo Enhancement del layer embedding e stabilizzazione  accuracy 0.78
+def Coupling(input_shape=(200, 8), num_classes=n_class, reg=0.01):   
+    # Input con shape (200, 8), ovvero 200 time steps con 8 feature per step
+    input_x = layers.Input(shape=input_shape, name='Input_X')
+    input_y = layers.Input(shape=(num_classes,), name='Input_Label')
+    
+    # Network per condizionare s e t in funzione del label y
+    label_condition = layers.Dense(32, activation='relu')(input_y)
+    label_condition = layers.BatchNormalization()(label_condition)  # Batch norm per stabilizzare
+    label_condition = layers.Dense(64, activation='relu')(label_condition)
+    label_condition = layers.BatchNormalization()(label_condition)
+    label_condition = layers.Dense(128, activation='relu')(label_condition)
+    label_condition = layers.BatchNormalization()(label_condition)
+    label_embedding = layers.Dense(256, activation='relu')(label_condition)
+
+    # Blocchi convoluzionali per l'estrazione di caratteristiche temporali
+    x = layers.Conv1D(filters=filter_1, kernel_size=kernel_size_1, padding='same', activation=attivaz_conv, kernel_regularizer=regularizers.l2(k_reg))(input_x)
+    x = layers.MaxPooling1D()(x)
+    x = layers.Conv1D(filters=filter_2, kernel_size=kernel_size_2, padding='same', activation=attivaz_conv, kernel_regularizer=regularizers.l2(k_reg))(x)
+    x = layers.MaxPooling1D()(x)
+    x = layers.Conv1D(filters=filter_3, kernel_size=kernel_size_3, padding='same', activation=attivaz_conv, kernel_regularizer=regularizers.l2(k_reg))(x)
+    x = layers.MaxPooling1D()(x)
+    x = layers.Flatten()(x)
+
+    # Livelli densi per la componente t (traslazione) con condizionamento MLP
+    t = keras.layers.Dense(128, activation="relu", kernel_regularizer=regularizers.l2(reg))(x)
+    t_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+    t = layers.Concatenate()([t, t_embedding])  # Condizionamento
+    t = keras.layers.Dense(input_shape[0] * input_shape[1], activation="linear", kernel_regularizer=regularizers.l2(reg))(t)
+    t_reshaped = keras.layers.Reshape(input_shape)(t)
+
+    # Livelli densi per la componente s (scalatura) con condizionamento MLP
+    s = keras.layers.Dense(128, activation="relu", kernel_regularizer=regularizers.l2(reg))(x)
+    s_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+    s = layers.Concatenate()([s, s_embedding])  # Condizionamento
+    # Usa exp invece di tanh per garantire la positività e stabilità numerica
+    s = keras.layers.Dense(input_shape[0] * input_shape[1], activation="tanh", kernel_regularizer=regularizers.l2(reg))(s)
+    s_reshaped = keras.layers.Reshape(input_shape)(s)
+
+    return keras.Model(inputs=[input_x, input_y], outputs=[s_reshaped, t_reshaped])
+
+
+
+
+
+# Struttura con enhancements ispirata da dinh2017density e qualche piccola modifica
+def residual_block(x, filters, kernel_size, dilation_rate=1):
+    """Blocco residuo con convoluzione dilatata"""
+    shortcut = x
+    if x.shape[-1] != filters:
+        shortcut = layers.Conv1D(filters=filters, kernel_size=1, padding='same')(shortcut)
+    
+    # Prima convoluzione dilatata
+    x = layers.Conv1D(filters=filters, kernel_size=kernel_size, dilation_rate=dilation_rate,
+                      padding='same', activation='relu', kernel_regularizer=regularizers.l2(0.01))(x)
+    x = layers.BatchNormalization()(x)
+    
+    # Seconda convoluzione dilatata
+    x = layers.Conv1D(filters=filters, kernel_size=kernel_size, dilation_rate=dilation_rate,
+                      padding='same', activation='relu', kernel_regularizer=regularizers.l2(0.01))(x)
+    x = layers.BatchNormalization()(x)
+    
+    # Connessione residuale
+    x = layers.Add()([shortcut, x])
+    return layers.Activation('relu')(x)
+
+def Coupling(input_shape=(200, 8), num_classes=10, reg=0.01):
+    input_x = layers.Input(shape=input_shape, name='Input_X')
+    input_y = layers.Input(shape=(num_classes,), name='Input_Label')
+    
+    # Rete condizionale sui label
+    label_condition = layers.Dense(32, activation='relu')(input_y)
+    label_condition = layers.BatchNormalization()(label_condition)
+    label_condition = layers.Dense(64, activation='relu')(label_condition)
+    label_condition = layers.BatchNormalization()(label_condition)
+    label_condition = layers.Dense(128, activation='relu')(label_condition)
+    label_condition = layers.BatchNormalization()(label_condition)
+    label_embedding = layers.Dense(256, activation='relu')(label_condition) 
+
+    # Blocchi convoluzionali migliorati con residui e dropout
+    x = layers.Conv1D(filters=32, kernel_size=3, padding='same', activation='relu')(input_x)
+    x = residual_block(x, filters=32, kernel_size=3, dilation_rate=2)  # Primo blocco residuo
+    x = layers.MaxPooling1D()(x)  # Downsampling
+    x = layers.Dropout(0.3)(x)  # Dropout
+
+    x = residual_block(x, filters=64, kernel_size=3, dilation_rate=4)  # Secondo blocco residuo
+    x = layers.MaxPooling1D()(x)  # Downsampling
+    x = layers.Dropout(0.3)(x)  # Dropout
+
+    x = residual_block(x, filters=128, kernel_size=3, dilation_rate=8)  # Terzo blocco residuo
+    x = layers.MaxPooling1D()(x)  # Downsampling
+    x = layers.Dropout(0.3)(x)  # Dropout
+    
+    x = layers.Flatten()(x)
+
+    # Livelli per la componente t (traslazione)
+    t = layers.Dense(128, activation="relu", kernel_regularizer=regularizers.l2(reg))(x)
+    t = layers.Dropout(0.3)(t)  # Dropout
+    t_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+    t = layers.Concatenate()([t, t_embedding])
+    t = layers.Dense(input_shape[0] * input_shape[1], activation="linear", kernel_regularizer=regularizers.l2(reg))(t)
+    t_reshaped = layers.Reshape(input_shape)(t)
+
+    # Livelli per la componente s (scalatura)
+    s = layers.Dense(128, activation="relu", kernel_regularizer=regularizers.l2(reg))(x)
+    s = layers.Dropout(0.3)(s)  # Dropout
+    s_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+    s = layers.Concatenate()([s, s_embedding])
+    s = layers.Dense(input_shape[0] * input_shape[1], activation="tanh", kernel_regularizer=regularizers.l2(reg))(s)
+    s_reshaped = layers.Reshape(input_shape)(s)
+
+    return keras.Model(inputs=[input_x, input_y], outputs=[s_reshaped, t_reshaped])
+
+
+
+
+
+
+# Mio coupling layer iniziale con label embedding
+def Coupling(input_shape=(200, 8), num_classes=n_class, reg=0.01):
+    # Input con shape (200, 8), ovvero 200 time steps con 8 feature per step
+    input_x = layers.Input(shape=input_shape, name='Input_X')
+    input_y = layers.Input(shape=(num_classes,), name='Input_Label')    # Input con shape (200, 8), ovvero 200 time steps con 8 feature per step
+    
+    # Network per condizionare s e t in funzione del label y
+    # Utilizzo di una rete di embedding per ottenere una rappresentazione continua della classe
+    label_embedding = layers.Dense(64, activation='relu')(input_y)
+    label_embedding = layers.Dense(128, activation='relu')(label_embedding)
+    
+    # Blocchi convoluzionali per l'estrazione di caratteristiche temporali
+    x = layers.Conv1D(filters=64, kernel_size=3, padding='same', kernel_regularizer=regularizers.l2(reg))(input_x)
+    x = layers.MaxPooling1D()(x)
+    x = layers.Conv1D(filters=128, kernel_size=3, padding='same', kernel_regularizer=regularizers.l2(reg))(x)
+    x = layers.MaxPooling1D()(x)
+    x = layers.Conv1D(filters=256, kernel_size=3, padding='same', kernel_regularizer=regularizers.l2(reg))(x)
+    x = layers.MaxPooling1D()(x)
+    x = layers.Flatten()(x)
+    
+    # Livelli densi per la componente t (traslazione) con condizionamento moltiplicativo
+    t = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(x)
+    t_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+    t = layers.Concatenate()([t, t_embedding])
+    t = layers.Dense(input_shape[0] * input_shape[1], activation='linear', kernel_regularizer=regularizers.l2(reg))(t)
+    t_reshaped = layers.Reshape(input_shape)(t)
+
+    # Livelli densi per la componente s (scalatura) con condizionamento moltiplicativo
+    s = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(x)
+    s_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+    s = layers.Concatenate()([s, s_embedding])
+    s = layers.Dense(input_shape[0] * input_shape[1], activation='tanh', kernel_regularizer=regularizers.l2(reg))(s)
+    s_reshaped = layers.Reshape(input_shape)(s)
+
+    return keras.Model(inputs=[input_x, input_y], outputs=[s_reshaped, t_reshaped])
+    
