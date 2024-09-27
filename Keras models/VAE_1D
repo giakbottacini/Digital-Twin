@@ -372,6 +372,8 @@ class VAE(keras.Model):
         return reconstructed, classified
 
 
+
+
 """
 ## Funzioni utili
 """
@@ -423,37 +425,37 @@ def plot_label_clusters_3d(vae, data, labels):
     plt.show()
 
 
-    # # Plot using MDS
-    # mds = MDS(n_components=3)
-    # z_mds = mds.fit_transform(z_mean)
+    # Plot using MDS
+    mds = MDS(n_components=3)
+    z_mds = mds.fit_transform(z_mean)
 
-    # fig = plt.figure(figsize=(12, 10))
-    # ax = fig.add_subplot(111, projection='3d')
-    # scatter = ax.scatter(z_mds[:, 0], z_mds[:, 1], z_mds[:, 2], c=labels, cmap='viridis')
-    # color_bar = fig.colorbar(scatter, ax=ax)
-    # color_bar.set_label('Classi')
-    # ax.set_xlabel("MDS[0]")
-    # ax.set_ylabel("MDS[1]")
-    # ax.set_zlabel("MDS[2]")
-    # plt.suptitle(f'Grouped by damage class in 3D latent space using MDS', fontsize=16)
-    # plt.savefig(os.path.join(output_dir, "label_clusters_mds_3d.png"))
-    # plt.show()
+    fig = plt.figure(figsize=(12, 10))
+    ax = fig.add_subplot(111, projection='3d')
+    scatter = ax.scatter(z_mds[:, 0], z_mds[:, 1], z_mds[:, 2], c=labels, cmap='viridis')
+    color_bar = fig.colorbar(scatter, ax=ax)
+    color_bar.set_label('Classi')
+    ax.set_xlabel("MDS[0]")
+    ax.set_ylabel("MDS[1]")
+    ax.set_zlabel("MDS[2]")
+    plt.suptitle(f'Grouped by damage class in 3D latent space using MDS', fontsize=16)
+    plt.savefig(os.path.join(output_dir, "label_clusters_mds_3d.png"))
+    plt.show()
 
-    # # Plot using TSNE  (in teoria serve più che altro se hai input categoriale)
-    # tsne = TSNE(n_components=3)
-    # z_tsne = tsne.fit_transform(z_mean)
+    # Plot using TSNE  (in teoria serve più che altro se hai input categoriale)
+    tsne = TSNE(n_components=3)
+    z_tsne = tsne.fit_transform(z_mean)
 
-    # fig = plt.figure(figsize=(12, 10))
-    # ax = fig.add_subplot(111, projection='3d')
-    # scatter = ax.scatter(z_tsne[:, 0], z_tsne[:, 1], z_tsne[:, 2], c=labels, cmap='viridis')
-    # color_bar = fig.colorbar(scatter, ax=ax)
-    # color_bar.set_label('Classi')
-    # ax.set_xlabel("TSNE[0]")
-    # ax.set_ylabel("TSNE[1]")
-    # ax.set_zlabel("TSNE[2]")
-    # plt.suptitle(f'Grouped by damage class in 3D latent space using TSNE', fontsize=16)
-    # plt.savefig(os.path.join(output_dir, "label_clusters_tsne_3d.png"))
-    # plt.show()
+    fig = plt.figure(figsize=(12, 10))
+    ax = fig.add_subplot(111, projection='3d')
+    scatter = ax.scatter(z_tsne[:, 0], z_tsne[:, 1], z_tsne[:, 2], c=labels, cmap='viridis')
+    color_bar = fig.colorbar(scatter, ax=ax)
+    color_bar.set_label('Classi')
+    ax.set_xlabel("TSNE[0]")
+    ax.set_ylabel("TSNE[1]")
+    ax.set_zlabel("TSNE[2]")
+    plt.suptitle(f'Grouped by damage class in 3D latent space using TSNE', fontsize=16)
+    plt.savefig(os.path.join(output_dir, "label_clusters_tsne_3d.png"))
+    plt.show()
 
     # Plot using PCA
     pca = PCA(n_components=3)
@@ -850,6 +852,56 @@ def plot_roc_curve(true_labels, probabilities):
 
 
 
+def visualize_latent_space(z_mean, true_labels, predicted_clusters, method='pca'):
+
+    # Seleziona il riduttore di dimensionalità
+    if method == 'pca':
+        reducer = PCA(n_components=2)
+    elif method == 'tsne':
+        reducer = TSNE(n_components=2, perplexity=30, learning_rate=200)
+    
+    z_reduced = reducer.fit_transform(z_mean)
+    
+    # Crea una figura con due sotto-figure
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 7))
+
+    # Primo plot con le true labels
+    sns.scatterplot(x=z_reduced[:, 0], y=z_reduced[:, 1], hue=true_labels, palette="tab10", s=60, alpha=0.7, ax=ax1)
+    ax1.set_title(f'Latent Space Visualization using {method.upper()} (True Labels)')
+    ax1.set_xlabel('Component 1')
+    ax1.set_ylabel('Component 2')
+
+    # Secondo plot con i predicted clusters
+    sns.scatterplot(x=z_reduced[:, 0], y=z_reduced[:, 1], hue=predicted_clusters, palette="tab10", s=60, alpha=0.7, ax=ax2)
+    ax2.set_title(f'Latent Space Visualization using {method.upper()} (Predicted Clusters)')
+    ax2.set_xlabel('Component 1')
+    ax2.set_ylabel('Component 2')
+
+    # Mostra i grafici
+    plt.tight_layout()
+    plt.show()
+
+from sklearn.cluster import KMeans
+
+
+def cluster_latent_space(data, true_labels):
+    #Applica K-Means al latent space e confronta con le true labels.
+
+    z_mean, _, _ = vae.encoder.predict(data, verbose=0)
+
+    kmeans = KMeans(n_clusters=n_class)
+    predicted_clusters = kmeans.fit_predict(z_mean)
+    
+    # Confronta i cluster predetti con le true labels (puoi usare metodi come accuracy, adjusted Rand index)
+    print(f"Clustering accuracy: {accuracy_score(true_labels, predicted_clusters):.4f}")
+    
+    # Visualizza i cluster
+    visualize_latent_space(z_mean, true_labels, predicted_clusters, method='pca')
+
+
+
+
+
 
 
 
@@ -1087,13 +1139,14 @@ else:
 
     # plot_label_clusters_3d(vae, X_test, predicted_classes)   #Plotta il clustering rispetto al label classificato dei dati test nello spazio latente
 
-    plot_class_transition_heatmap(vae, X_test_2, X_test_3)
+    # plot_class_transition_heatmap(vae, X_test_2, X_test_3)
 
-    plot_variances_by_class(vae, X_test, X_test_2, X_test_3)
-    plot_means_by_class(vae, X_test, X_test_2, X_test_3)
+    # plot_variances_by_class(vae, X_test, X_test_2, X_test_3)
+    # plot_means_by_class(vae, X_test, X_test_2, X_test_3)
 
-    df = variation_mean_and_var(vae, X_test_2, X_test_3)
+    # df = variation_mean_and_var(vae, X_test_2, X_test_3)
     
+    # cluster_latent_space(X_test_2, labels_test)
 
     
     # plot_confidence_histogram_per_class(X_test_classified, predicted_classes)
