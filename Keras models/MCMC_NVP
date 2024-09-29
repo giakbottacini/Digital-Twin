@@ -1,0 +1,53 @@
+"""
+Title: MCMC Tutorial
+Author: (https://sdsawtelle.github.io/blog/output/mcmc-in-python-with-pymc.html)
+"""
+
+
+from matplotlib import pyplot as plt
+import pymc as pm
+import numpy as np
+import aesara.tensor as at
+
+
+# Funzione per la probabilità usando il modello RealNVP
+def realnvp_probability(data, label_vector):
+    # Inserisci qui il codice per ottenere la probabilità condizionata
+    # dal tuo modello RealNVP (invece di questa funzione placeholder).
+    return np.exp(-np.sum((data - label_vector)**2))  # Esempio di densità
+
+# Definisci il modello PyMC con vettore continuo
+def mcmc_classification_pymc(data, num_dimensions=8, num_iterations=1000):
+    # Inizializziamo un array di dimensione 8 per rappresentare il label come un vettore di reali
+    with pm.Model() as model:
+        # Definiamo una distribuzione a priori per il vettore di label
+        # Distribuzione normale multivariata come prior
+        label_vector = pm.Normal("label_vector", mu=0, sigma=1, shape=num_dimensions)
+        
+        # Definiamo la probabilità condizionata dal RealNVP
+        def realnvp_logp(label_vector):
+            # Ottieni la probabilità dal RealNVP (logaritmica)
+            return at.log(realnvp_probability(data, label_vector))
+        
+        # Colleghiamo la probabilità condizionata (likelihood)
+        likelihood = pm.Potential("likelihood", realnvp_logp(label_vector))
+        
+        # Eseguiamo l'inferenza MCMC
+        trace = pm.sample(num_iterations, return_inferencedata=False)  #Come sampler sto utilizzando No-U-Turn Sampler (NUTS), una variante dell'Hamiltonian Monte Carlo (HMC)
+    
+    # Restituiamo i risultati del vettore continuo campionato
+    return trace["label_vector"]
+
+# Esempio di utilizzo
+if __name__ == "__main__":
+    # Dato fisso da classificare
+    data = np.array([0.5, 0.5, 0.2, 0.8, 0.3, 0.1, 0.4, 0.6])  # Esempio di dato a 8 dimensioni
+    
+    # Esegui la classificazione con PyMC usando il vettore continuo
+    accepted_labels = mcmc_classification_pymc(data)
+    
+    # Analizza i risultati: Calcola la media dei campioni per ottenere il label continuo stimato
+    label_estimate = np.mean(accepted_labels, axis=0)
+    
+    print(f"Label stimato: {label_estimate}")
+
