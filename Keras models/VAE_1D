@@ -122,7 +122,6 @@ def read_data(path_data, addedd_SNR):
     #     np.save(path_save+'Corrupted_signals_means', signals_means)
     #     np.save(path_save+'Corrupted_signals_stds', signals_stds)
        
-    # return X_noise, labels_class, N_ist
     return X_noise, labels_class, N_ist
 
 

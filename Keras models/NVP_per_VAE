@@ -766,10 +766,12 @@ else:
     # Aggiungi una legenda
     plt.legend()
 
+    # Salva il grafico in un file immagine
+    plt.savefig(os.path.join(output_dir, "hist_confronto.png"))
+
     # Mostra il grafico
     plt.show()
 
-    # Salva il grafico in un file immagine
-    plt.savefig(os.path.join(output_dir, "hist_confronto.png"))
+
 
 
