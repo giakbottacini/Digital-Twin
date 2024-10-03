@@ -1066,7 +1066,7 @@ else:
     """
 
     # Caricamento dei dati di test
-    X_test, labels_test, N_ist_test = read_data_rumored(path_data_test, 100)
+    X_test, labels_test, N_ist_test = read_data_rumored(path_data_test, 10)
 
     print(f"Forma di X_test: {X_test.shape}")
 
@@ -1192,7 +1192,7 @@ else:
     """
     ## Analisi ulteriori
     """
-    X_test_2, labels_test_2, N_ist_test_2 = read_data_rumored(path_data_test, 20)
+    X_test_2, labels_test_2, N_ist_test_2 = read_data_rumored(path_data_test, 10)
     # test_dataset_2 = tf.data.Dataset.from_tensor_slices((X_test_2, labels_test_2))
     # test_dataset_2 = test_dataset_2.batch(batch_size)
 
@@ -1202,13 +1202,13 @@ else:
 
     # plot_label_clusters_3d(vae, X_test, predicted_classes)   #Plotta il clustering rispetto al label classificato dei dati test nello spazio latente
 
-    # plot_class_transition_heatmap(vae, X_test, X_test_2)   #Plotta transition_map da X_test_2 a X_test_3
+    plot_class_transition_heatmap(vae, X_test, X_test_2)   #Plotta transition_map da X_test_2 a X_test_3
 
 
-    plot_variances_by_class(vae, X_test, X_test_2, X_test_3)  #Plotta densità variances per classe per i tre dataset
-    plot_means_by_class(vae, X_test, X_test_2, X_test_3)    #Plotta densità variances per classe per i tre dataset
+    # plot_variances_by_class(vae, X_test, X_test_2, X_test_3)  #Plotta densità variances per classe per i tre dataset
+    # plot_means_by_class(vae, X_test, X_test_2, X_test_3)    #Plotta densità variances per classe per i tre dataset
 
-    df = variation_mean_and_var(vae, X_test_2, X_test_3)   #Restituisce file densità variances per classe per i due dataset
+    # df = variation_mean_and_var(vae, X_test_2, X_test_3)   #Restituisce file densità variances per classe per i due dataset
     
 
     # cluster_latent_space(X_test, labels_test)     #Confronta i cluster predetti con le true labels
@@ -1217,4 +1217,4 @@ else:
     # plot_confidence_histogram_per_class(X_test_classified, predicted_classes)  
     # plot_margin_histogram_per_class(X_test_classified, predicted_classes)
 
-    # plot_roc_curve(labels_test, X_test_classified)   #Plotta roc curve per classe della classificazione ottenuta da X_test
+    plot_roc_curve(labels_test, X_test_classified)   #Plotta roc curve per classe della classificazione ottenuta da X_test

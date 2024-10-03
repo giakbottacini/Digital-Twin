@@ -335,38 +335,38 @@ NVP.load_weights('./models/NVP_for_MCMC.weights.h5')
 
 
 
-import aesara.tensor as tt
+# import aesara.tensor as tt
 
-Definisci una funzione esterna per calcolare la log-likelihood usando il tuo modello RealNVP
-def realnvp_logp(data, label_vector):
+# #Definisci una funzione esterna per calcolare la log-likelihood usando il tuo modello RealNVP
+# def realnvp_logp(data, label_vector):
 
-    print(f"label_vector shape: {label_vector.shape}")
+#     print(f"label_vector shape: {label_vector.shape}")
 
-    label_vector_eval = label_vector.eval()  # Campiona i valori  # Converte in numpy array
+#     label_vector_eval = label_vector.eval()  # Campiona i valori  # Converte in numpy array
 
-    print(f"data shape: {data.shape}, label_vector_eval shape: {label_vector_eval.shape}")
+#     print(f"data shape: {data.shape}, label_vector_eval shape: {label_vector_eval.shape}")
 
 
-    label_vector_eval = np.expand_dims(label_vector_eval, axis=0)  # Assicurati che sia nel formato corretto (batch_size,n_class)
+#     label_vector_eval = np.expand_dims(label_vector_eval, axis=0)  # Assicurati che sia nel formato corretto (batch_size,n_class)
 
-    log_prob = NVP.predict(data, label_vector_eval)
-    return log_prob  
+#     log_prob = NVP.predict(data, label_vector_eval)
+#     return log_prob  
 
-def mcmc_classification_pymc(data, num_dimensions=8, num_iterations=1000):
-    with pm.Model() as model:
-        # Definiamo una distribuzione a priori per il vettore di label
-        label_vector = pm.Normal("label_vector", mu=0, sigma=1, shape=n_class)
-        print(f"label_vector shape: {label_vector.shape}")
+# def mcmc_classification_pymc(data, num_dimensions=8, num_iterations=1000):
+#     with pm.Model() as model:
+#         # Definiamo una distribuzione a priori per il vettore di label
+#         label_vector = pm.Normal("label_vector", mu=0, sigma=1, shape=n_class)
+#         print(f"label_vector shape: {label_vector.shape}")
 
-        # Usa pm.Deterministic per calcolare la log-likelihood esternamente
-        loglikelihood = pm.Potential("loglikelihood", realnvp_logp(data, label_vector))
+#         # Usa pm.Deterministic per calcolare la log-likelihood esternamente
+#         loglikelihood = pm.Potential("loglikelihood", realnvp_logp(data, label_vector))
 
-        # Eseguiamo l'inferenza MCMC
-        step = pm.Metropolis()  # Imposta Metropolis-Hastings come algoritmo di campionamento
-        trace = pm.sample(num_iterations, return_inferencedata=True)
+#         # Eseguiamo l'inferenza MCMC
+#         step = pm.Metropolis()  # Imposta Metropolis-Hastings come algoritmo di campionamento
+#         trace = pm.sample(num_iterations, return_inferencedata=True)
     
-    # Restituiamo i risultati del vettore continuo campionato
-    return trace["label_vector"]
+#     # Restituiamo i risultati del vettore continuo campionato
+#     return trace["label_vector"]
 
 
 # def realnvp_logp(data, label_vector):
@@ -401,59 +401,72 @@ def mcmc_classification_pymc(data, num_dimensions=8, num_iterations=1000):
 
 
 
+import pytensor.tensor as pt
+from pytensor.graph.op import Op
+from pytensor.graph.basic import Apply
+import time
 
-# mcmc = tfp.mcmc
+# Definisci l'Op personalizzata che esegue la chiamata al modello RealNVP con TensorFlow
+class RealNVPTF(Op):
+    def __init__(self, nvp_model):
+        self.nvp_model = nvp_model  # Passa il modello NVP come attributo
+
+    #make_node consente di definire come i dati entrano ed escono dal grafo computazionale e garantendo la compatibilità con i requisiti di PyMC.
+    def make_node(self, data, label_vector):   
+        # Forza il tipo di dati float64 per assicurarsi che PyMC riceva il tipo corretto
+        data = pt.as_tensor_variable(data.astype(np.float64))
+        label_vector = pt.as_tensor_variable(label_vector.astype(np.float64))
+        return Apply(self, [data, label_vector], [pt.dscalar()])  # Restituisci uno scalare come output
+
+    def perform(self, node, inputs, outputs):
+        # Ricevi i numpy array e forza float64 per ogni operazione
+        data, label_vector = inputs
+
+        # Assicurati che anche l'input al modello NVP sia in formato float64
+        label_vector_eval = np.expand_dims(label_vector, axis=0).astype(np.float64)  # (batch_size, n_class)
+
+        # Esegui il modello NVP e ottieni la log-likelihood in float64
+        log_prob = self.nvp_model.predict(data.astype(np.float64), label_vector_eval.astype(np.float64))
+
+        # Assegna l'output con la giusta precisione
+        outputs[0][0] = np.array(log_prob, dtype=np.float64)  # Forza l'output come float64
 
 
-# # Funzione principale che esegue l'MCMC utilizzando HMC e il modello NVP
-# def mcmc_with_nvp_hmc(data, NVP_model, n_classes=8, num_iterations=50, num_burnin_steps=20  , step_size=0.1):
+# Crea un'istanza dell'Op personalizzata con il modello NVP
+real_nvp_tf_op = RealNVPTF(NVP)
 
-#     # Definizione della log-likelihood tramite il modello NVP
-#     def log_likelihood(label_vector, data):
-#         # Calcola la probabilità del dato condizionata sul vettore di label tramite il modello NVP
-#         label_vector = tf.convert_to_tensor(label_vector, dtype=tf.float32)
-#         data = tf.convert_to_tensor(data, dtype=tf.float32)
+# Definisci la funzione di log-likelihood che userai in PyMC
+def realnvp_logp(data, label_vector):
+    # Converte i dati e label_vector in float64 prima di passare all'Op personalizzato
+    return real_nvp_tf_op(data.astype(np.float64), label_vector.astype(np.float64))
 
-#         # Aggiungi una dimensione di batch al label_vector
-#         label_vector = tf.expand_dims(label_vector, axis=0)
-#         log_prob = NVP_model.predict(data, label_vector)
 
-#         return tf.reduce_sum(log_prob)   # Sommo perché il dato è multidimensionale
+# Funzione che esegue l'inferenza MCMC usando Metropolis-Hastings
+def mcmc_classification_pymc(data, num_iterations=1000):
+    with pm.Model() as model:
+        # Definiamo una distribuzione a priori per il vettore di label
+        # label_vector = pm.Normal("label_vector", mu=0, sigma=1, shape=(n_class,))
+        # labels_vector = pm.Uniform('labels_vector', lower=0, upper=1, shape=8)
+        # label_vector = pm.Beta('label_vector', alpha=2, beta=5, shape=(n_class,))
+        label_vector = pm.Exponential('label_vector', lam=1/0.7, shape=(n_class,))
 
-#     # Definisci la probabilità log-target (log-likelihood + prior)
-#     def target_log_prob_fn(label_vector):
-#         # Prior: distribuzione Beta per riflettere la tua conoscenza
-#         log_prior = tfp.distributions.Beta(concentration0=2.0, concentration1=2.0).log_prob(label_vector)
+        # Usa pm.Potential per integrare la log-likelihood calcolata esternamente
+        loglikelihood = pm.Potential("loglikelihood", realnvp_logp(data, label_vector))
 
-#         # Log-likelihood dal modello NVP
-#         log_likelihood_value = log_likelihood(label_vector, data)
-
-#         print(f"log_likelihood_value: {log_likelihood_value}")
-#         print(f"log_prior: {log_prior}")
-
-#         return log_prior + log_likelihood_value
-
-#     # Hamiltonian Monte Carlo (HMC) setup
-#     hmc = tfp.mcmc.HamiltonianMonteCarlo(
-#         target_log_prob_fn=target_log_prob_fn,
-#         step_size=step_size,
-#         num_leapfrog_steps=3
-#     )
+        # Eseguiamo l'inferenza MCMC usando Metropolis-Hastings
+        step = pm.Metropolis()  # Usa Metropolis-Hastings come algoritmo di campionamento
+        #step = pm.AdaptiveMetropolis() #Another possibility
+        trace = pm.sample(num_iterations, chains=2, step=step, return_inferencedata=False)
+        #trace = pm.sample_smc(samples=num_iterations)
+        # trace = pm.sample(num_iterations, chains=8, cores=4, step=step, return_inferencedata=False)
     
-#     # Stato iniziale strategico per il vettore di label
-#     initial_state = tf.random.uniform([n_classes], minval=0.0, maxval=1.0)    # Inizializza solo nei valori di interesse
+    # Restituiamo i risultati del vettore continuo campionato
+    return trace["label_vector"]
 
-#     # Esegui il campionamento con HMC
-#     samples = tfp.mcmc.sample_chain(
-#         num_results=num_iterations,
-#         num_burnin_steps=num_burnin_steps,
-#         current_state=initial_state,
-#         kernel=hmc,
-#         trace_fn=None
-#     )
-    
-#     # Ritorna i campioni generati
-#     return samples
+
+
+
+
 
 
 
@@ -566,6 +579,30 @@ print(f"Forma di labels: {labels.shape}")
 
 print("Prime 2 righe di labels:")
 print(labels[:2])
+
+
+
+
+from scipy.stats import expon
+
+lam = 0.7
+
+# Generiamo e visualizziamo la distribuzione esponenziale
+x = np.linspace(0, 10, 100)
+y = expon.pdf(x, scale=1/lam)
+
+plt.figure(figsize=(6, 4))
+plt.plot(x, y, label=f'Exponential(lambda={lam})', color='blue')
+plt.fill_between(x, y, color='blue', alpha=0.2)
+plt.title("Distribuzione Esponenziale")
+plt.xlabel("x")
+plt.ylabel("Density")
+plt.legend()
+plt.grid(True)
+plt.show()
+
+
+
 
 
 
