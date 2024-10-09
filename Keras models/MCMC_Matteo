@@ -1,0 +1,428 @@
+# Author: Matteo Torzoni
+
+#Load some libraries
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1" #turn off GPU
+import tensorflow as tf
+from tensorflow import keras
+import numpy as np
+from tensorflow.keras import layers
+
+##############################
+from numba import njit, prange ############################## Questo è stato testato solo su GPU!!! - controllare che sia ok su CPU
+##############################
+
+import time
+import scipy.stats as st
+from pyts.approximation import SymbolicAggregateApproximation
+import pickle
+from scipy.signal import butter,filtfilt
+keras.backend.clear_session()
+
+esempio = 'L_FRAME_MF_HF_RETE' # Specify the example you are dealing with
+ID_test               = '1_0_MCMC_3'
+work_ID         = 'Paper_2\\EPSR\\'
+path            = 'D:\\Users\\Matteo\\Corigliano\\' + esempio + '\\Dati\\'
+path_data_test   = path + 'istantest_' + ID_test
+work_path       = path + work_ID
+extractor_ID         = 'Indirectly_supervised_extractor\\'
+extractor_path       = path + extractor_ID
+surrogate_ID         = 'Surrogate_features\\'
+surrogate_path       = path + surrogate_ID
+
+# ----------------------------------------------------------------------------
+
+n_channels     = 8 #numero canali
+N_entries = 200 #length of single signal
+
+removed_ratio = 0.2 #ratio of N_entries to be removed in the computation of the likelihood
+limit=int(N_entries*removed_ratio) #numero di time step da rimuovere
+
+# Filter requirements.
+fs = 200.0      # sample rate, Hz
+T = (N_entries-limit)/fs        # Sample Period
+cutoff = 60.0   # desired cutoff frequency of the filter, Hz
+nyq = 0.5 * fs  # Nyquist Frequency
+order = 2       # sin wave can be approx represented as quadratic
+
+# parameters to transform sinals into images
+n_bins = 20
+image_size = 40
+neurons_latent = 20
+window_size, remainder = divmod(N_entries-limit, image_size)
+if remainder != (0):
+    print('divisione non intera') 
+    os._exit(0)
+    
+freq_min = 10 #valore minimo parametro frequenza
+freq_delta_max = 50 #delta range rispetto al minimo parametro frequenza
+Coord_x_min = 0.15 #valore minimo parametro danno in x
+Coord_x_delta_max = 3.7 #delta range rispetto al minimo parametro ampiezza
+Coord_y_min = 0.15 #valore minimo parametro danno in y
+Coord_y_delta_max = 3.7 #delta range rispetto al minimo parametro ampiezza
+
+#MCMC parameters
+niters = 10000 #max length of the chain
+burnin_min = 1000 #transitory period is initiallized at a minimum value and increased at each step to be half of the current steps
+burnin_cov = 500 #transitory period to initialize the tuining of the standard deviation
+burnin_ratio = 2 #ratio of steps to be discarded
+n_chains = 5 #number of starting locations to compute the EPSR
+naccept = np.zeros((niters+1,n_chains)) #number of accepted samples
+N_obs = 8 # number of observations for each scenario -> necessario fattore di scala nel calcolo della lielihood
+thinning = 4 #subsampling ratio to make samples independent
+
+n_parameters = 2 #parametro di danneggiamento + parametro di carico
+sp = 2.4**2/n_parameters #adaptation parameter
+
+convergence = 0 #control variable to check if the chain has converged; the convergence start to be checked only after start_to_check_factor times step the minimum burnin
+start_to_check_factor = 2 #the convergence start to be checked after start_to_check_factor times step the minimum burnin
+check_every = 50 #control the convergence every check_every steps
+R_limit = 1.01 #treshold to converge on the potential scale reduction
+
+#Apply MCMC for a testing instance (for each we have N_obs observations)
+which_ist = 1
+
+#standard deviations of the proposal densities: small enough so that the sampler gets moving, and let the adaptation tune the proposal
+sigma_proposal_frequency = 1e-2 #5e-4
+sigma_proposal_damage =    1e-2 #5e-2
+
+#creo covarianza proposal e proposal per ogni catena: adesso ci interessa solo damage
+#catena 1
+cov_proposal = np.expand_dims(np.diag([sigma_proposal_frequency**2, sigma_proposal_damage**2]), axis=0)
+proposal =  np.expand_dims(st.multivariate_normal(np.zeros((n_parameters)), cov_proposal[0]),axis=0)
+#catene da 2 a 5
+for j1 in range(n_chains-1):
+    cov_proposal = np.append(cov_proposal,np.expand_dims(np.diag([sigma_proposal_frequency**2, sigma_proposal_damage**2]), axis=0),axis=0)
+    proposal =  np.append(proposal, np.expand_dims(st.multivariate_normal(np.zeros((n_parameters)), cov_proposal[0]),axis=0), axis=0)
+
+# ----------------------------------------------------------------------------
+
+def read_HF_input(path_data): # carico parametri di input HF e segnali LF
+    Frequency_path = path_data + '\\Frequency.csv'                
+    Frequency      = np.genfromtxt(Frequency_path)
+    Coord_x_path = path_data + '\\Coord_x.csv'
+    Coord_x      = np.genfromtxt(Coord_x_path) #fisso per N_obs     
+    Coord_y_path = path_data + '\\Coord_y.csv'                                 
+    Coord_y      = np.genfromtxt(Coord_y_path) #fisso per N_obs
+    
+    #labels usage in pacchetti da 10 (valide per N_obs)
+    Frequency_true_path = path_data + '\\Frequency_true.csv'                
+    Frequency_true      = np.genfromtxt(Frequency_true_path)
+    
+    #NORMALIZZO DATI IN INGRSSO
+    Frequency = (Frequency - freq_min) / freq_delta_max #normalizzato tra 0 e 1
+    Frequency_true = (Frequency_true - freq_min) / freq_delta_max #normalizzato tra 0 e 1
+    Coord_x = (Coord_x - Coord_x_min) / Coord_x_delta_max #normalizzato tra 0 e 1
+    Coord_y = (Coord_y - Coord_y_min) / Coord_y_delta_max #normalizzato tra 0 e 1
+    N_ist = len(Frequency) #(N_ist*N_obs)
+    
+    #organizzo dati
+    X_HF = np.zeros((N_ist,3))
+    X_HF[:,0] = Frequency
+    X_HF[:,1] = Coord_x
+    X_HF[:,2] = Coord_y
+    
+    return X_HF, N_ist, Frequency_true
+
+def load_HF_signals(path_data, N_ist, N_entries, N_obs):
+    Recordings = np.load(path_data+'Recordings_MCMC.pkl',allow_pickle=True)
+    Observations_HF = np.zeros((N_ist,N_obs,n_channels,N_entries)) #struttura per osservazioni 10x8x8x200
+    for i1 in range(N_ist):
+        for i2 in range(N_obs):
+            for i3 in range(n_channels):
+                Observations_HF[i1,i2,i3,:] = Recordings[i1*N_obs+i2,i3*N_entries:(i3+1)*N_entries]
+                Observations_HF[i1,i2,i3,:] = filt(Observations_HF[i1,i2,i3,:], cutoff, fs, order) #filtro passa-basso
+    return Observations_HF
+
+# required to transform signals to images
+def transition_matrix(transitions):
+    n = n_bins #number of states
+
+    M = [[0]*n for _ in range(n)]
+
+    for (i,j) in zip(transitions,transitions[1:]):
+        M[i][j] += 1
+
+    #now convert to probabilities:
+    for row in M:
+        s = sum(row)
+        if s > 0:
+            row[:] = [f/s for f in row]
+            
+    return M
+
+#filtro passa-basso
+def filt(data, cutoff, fs, order):
+    normal_cutoff = cutoff / nyq
+    # Get the filter coefficients 
+    b, a = butter(order, normal_cutoff, btype='low', analog=False)
+    y = filtfilt(b, a, data)
+    return y
+
+# required to transform signals to images
+@njit()
+def _markov_transition_field(X_binned, X_mtm, n_timestamps):
+    X_mtf = np.zeros((n_timestamps, n_timestamps))
+    
+    # We loop through each timestamp twice to build a N x N matrix:
+    for i in prange(n_timestamps):
+        for j in prange(n_timestamps):
+            # We align each probability along the temporal order: MTF(i,j) 
+            # denotes the transition probability of the bin 'i' to the bin 'j':
+            X_mtf[i, j] += X_mtm[X_binned[i], X_binned[j]]
+            
+    return X_mtf
+
+# ----------------------------------------------------------------------------
+
+X_HF, N_ist, Frequency_true = read_HF_input(path_data_test) #carico input HF e segnali LF ricostruiti
+Y_HF  = load_HF_signals(work_path,N_ist//N_obs,N_entries,N_obs) #carico segnali HF obbiettivo
+      
+# ----------------------------------------------------------------------------
+
+#EXTRACT FEATURES from data: 
+mean_features = np.load(extractor_path+'mean_features.npy')
+std_features = np.load(extractor_path+'std_features.npy')
+encoder = keras.models.load_model(extractor_path + 'Feature_extractor_model')
+
+signals = Y_HF[which_ist,:,:,limit:]
+
+# NORMALIZE EACH SIGNAL  
+for i3 in range(n_channels):         
+    for i2 in range(N_obs):
+        signals[i2,i3,:] = (signals[i2,i3,:] - np.mean(signals[i2,i3,:]))/np.std(signals[i2,i3,:])
+
+sax = SymbolicAggregateApproximation(n_bins=n_bins, strategy='normal',alphabet='ordinal')
+X_amtf_normalize_single_ist = np.zeros((N_obs,image_size*2,image_size*4))
+    
+#transform observations to images
+for i1 in prange(n_channels):
+    # SAX transformation normalize single ist
+    X_sax_normalize_single_ist = sax.fit_transform(signals[:,i1,:])
+    for i2 in prange(N_obs):
+        x = transition_matrix(X_sax_normalize_single_ist[i2])
+        transition_m=np.array([np.array(xi) for xi in x])
+        X_mtf = _markov_transition_field(X_sax_normalize_single_ist[i2], transition_m, N_entries-limit)
+        X_amtf_normalize_single_ist[i2,(i1//4)*image_size:(i1//4+1)*image_size,(i1-(i1//4)*4)*image_size:(1+i1-(i1//4)*4)*image_size] += np.reshape(X_mtf, (image_size, window_size, image_size, window_size)).mean(axis=(1, 3))
+        
+#extract features from observations
+X_amtf_normalize_single_ist = np.expand_dims(X_amtf_normalize_single_ist, axis=3)
+transformed_obs = encoder.predict(X_amtf_normalize_single_ist)
+for i1 in range(neurons_latent):
+    transformed_obs[:,i1] = (transformed_obs[:,i1] - mean_features[i1]) / std_features[i1]
+
+# ----------------------------------------------------------------------------
+    
+#SETUP PRIOR
+prior_usage = st.uniform()
+prior_coord = st.uniform()
+
+# ---------------------------------------------------------------------------- 
+    
+#SETUP OF THE SURROGATE MODEL:
+surrogate = keras.models.load_model(surrogate_path + 'Surrogate_model')
+    
+# ---------------------------------------------------------------------------- 
+      
+#INITIALIZE SOME STRUCTURES
+
+MC_coord_start = np.zeros((n_chains,n_parameters)) #contenitore parametri(stima) per inizializzare le catene
+
+like_single = np.zeros((n_chains, N_obs)) #contenitore per like sulle singole osservazioni
+like_tot_before = np.zeros((n_chains)) #likelihood per batch di osservazioni allo step precedente
+like_tot_now = np.zeros((n_chains)) #likelihood per batch di osservazioni allo step corrente
+
+X_input = np.zeros((n_chains,n_parameters+1)) # reshape da parametri campionati per il surrogato (+1 per tenere conto di damage_x e damage_y)
+X_input_start = np.zeros((n_chains,n_parameters+1)) #come sopra, ma per inizializzare la catena
+
+like_hist = np.zeros((niters+1,n_chains)) #per salvare storia di likelihood su ogni catena
+proposed_params = np.zeros((niters+1,n_chains,n_parameters)) #per salvare storia di parametri proposti su ogni catena
+increment = np.zeros((niters,n_chains,n_parameters)) #per salvare storia di incremento parametri proposto su ogni catena
+chain = np.zeros((niters+1,n_chains,n_parameters)) #per salvare le catene
+R = np.zeros((n_parameters)) #variable to collect the potential scale reduction for each parameter (convergence)
+
+to_tune_cov = np.zeros((niters,n_chains,n_parameters)) #database di appoggio per gestire il tuning della matrice di covarianza per le diverse catene
+temp = np.zeros((n_chains,n_parameters)) #proposta dei parametri da valtare se accettare o meno
+
+# ---------------------------------------------------------------------------- 
+    
+#LIKELIHOOD:
+
+@njit()   
+def RMSE(vect1, vect2):
+    return np.sqrt(np.mean(np.square(vect1 - vect2)))
+
+@njit()   
+def RSSE(vect1, vect2):
+    return np.sqrt(np.sum(np.square(vect1 - vect2)))
+   
+#CONSIDERO L'ERRORE COMPRENSIVO REALIZZAZIONE DI UNA SINGOLA VARIABILE ALEATORIA; 
+#@njit()
+def likelihood(obs,mapping):
+    for l1 in prange(N_obs):
+        for l2 in prange(n_chains):
+            rmse = RMSE(obs[l1], mapping[l2])
+            rsse = RSSE(obs[l1], mapping[l2])
+            like_single[l2, l1] = 1./(np.sqrt(2.*np.pi)*rmse) * np.exp(-((rsse**2)/(2.*(rmse**2))))
+    return np.prod(like_single, axis=1)
+
+def target(total_like,theta):
+    return total_like[:] * prior_usage.pdf(theta[:,0]) * prior_coord.pdf(theta[:,1])
+
+# ---------------------------------------------------------------------------- 
+
+#BEGIN MCMC:
+    
+#CON EPSR VALE LA PENA INIZIALIZZARE LE CATENE IN PUNTI DIVERSI
+for j1 in range(n_chains):   #Il codice inizia creando più catene indipendenti per l'MCMC, una pratica comune per verificare la convergenza.    
+    MC_coord_start[j1] = np.array([prior_usage.rvs(), prior_coord.rvs()]) 
+
+chain[0] = MC_coord_start #inizializzo catene
+i1 = which_ist #set di osservazioni N#?
+index_for_cov = np.zeros((n_chains)) #un contatore per ogni catena per gestire il tuning della matrice di covarianza
+
+k=-1  #loop MCMC
+t = time.time()
+while convergence==0 and k<(niters-1):    #Il loop principale viene eseguito fino a quando non viene rilevata la convergenza o viene raggiunto un numero massimo di iterazioni (niters).
+    k+=1
+    if k==0: #condizione per inizializare la catena
+        
+        #riporto parametro coordinata ascissa danno in coordinate x e y per valutare modello surrogato
+        for j1 in prange(n_chains):
+            if chain[0,j1,1] <= 0.5: #danno nel primo braccio della struttura
+                damage_x = chain[0,j1,1]*2.
+                damage_y = 0.
+            elif chain[0,j1,1] > 0.5: #altrimenti, danno nel secondo braccio della struttura
+                damage_x = 1.
+                damage_y = (chain[0,j1,1] - 0.5)*2.
+            
+            #passo parametri campionati al surrogato
+            X_input_start[j1,0] = chain[0,j1,0] 
+            X_input_start[j1,1] = damage_x 
+            X_input_start[j1,2] = damage_y
+        
+        #valuto surrogato una volta per tutte le catene
+        Y_start = surrogate.predict(X_input_start) #(n_chains,n_basi)
+        
+        #calcolo likelihood tra features estratte dalle osservazioni e features da surrogato
+        like_tot_before = likelihood(transformed_obs,Y_start)
+        
+        #valuto posterior per current sample    
+        target_before = target(like_tot_before, chain[0])
+        
+        #salvo valore parametri proposti e valore likelihood
+        proposed_params[0] = chain[0]
+        like_hist[0] = like_tot_before
+        
+    for j1 in prange(n_chains):
+        
+        increment[k,j1] = proposal[j1].rvs() #campiono incremento parametro dalla proposal
+        temp[j1] = chain[k,j1,:] + increment[k,j1] #calcolo valore parametro proposto
+        
+        if temp[j1,1] <= 0.5:#danno nel primo braccio della struttura
+            damage_x = temp[j1,1]*2.
+            damage_y = 0
+        elif temp[j1,1] > 0.5:#altrimenti, danno nel secondo braccio della struttura
+            damage_x = 1.
+            damage_y = (temp[j1,1] - 0.5)*2.
+        
+        #passo parametri campionati al surrogato
+        X_input[j1,0] = temp[j1,0]
+        X_input[j1,1] = damage_x
+        X_input[j1,2] = damage_y
+
+    #valuto surrogato una volta per tutte le catene
+    Y = surrogate.predict(X_input)     
+    
+    #calcolo likelihood tra features estratte dalle osservazioni e features da surrogato
+    like_tot_now = likelihood(transformed_obs,Y)
+            
+    #valuto posterior per current sample
+    target_now = target(like_tot_now, temp)
+    
+    #salvo valore parametri proposti e valore likelihood
+    like_hist[k+1] = like_tot_now
+    proposed_params[k+1] = temp
+    
+    #formula di accettazione Metropolis
+    ratio = target_now/target_before
+    for j1 in range(n_chains):
+        rho = min(1., ratio[j1])# per ogni catena, valuto se accettare o meno
+       
+        u =  np.random.uniform()
+    
+        if k <= burnin_cov: #condizione per adaptive Metropolis: se vero non sto ancora adattando la covarianza della proposal
+            if u < rho: #accetto
+                chain[k+1,j1] = temp[j1]
+                target_before[j1] = target_now[j1]
+                to_tune_cov[int(index_for_cov[j1]),j1] = increment[k,j1]
+                index_for_cov[j1] += 1 
+            else: #rigetto
+                chain[k+1,j1] = chain[k,j1]
+        elif k > burnin_cov: #condizione per adaptive Metropolis: se vero ho iniziato ad adattare la covarianza della proposal
+            if u < rho: #accetto
+                if k >= burnin_min: #se vero, ho superato il burnin minimo e utilizzo il sample anche per calcolare l'acceptance ratio dell'intera simulazione
+                    naccept[k+1,j1] += 1    
+                chain[k+1,j1] = temp[j1]
+                target_before[j1] = target_now[j1]
+                to_tune_cov[int(index_for_cov[j1]),j1] = increment[k,j1]   
+                index_for_cov[j1] += 1 
+            else: #rigetto
+                chain[k+1,j1] = chain[k,j1]
+            #aggiorno covarianza della proposal
+            cov_proposal[j1] = np.cov(to_tune_cov[int(index_for_cov[j1]//2):int(index_for_cov[j1]),j1].T) * sp #Accelerabile!! (p.197 Andrea)
+            proposal[j1] = st.multivariate_normal(np.zeros((n_parameters)), cov_proposal[j1])
+            
+    #Check convergence considering k//2 steps (moving burning phase):
+    if k >= burnin_min*start_to_check_factor and (k/check_every).is_integer():
+        ending_conv = k+1
+        start_conv = ending_conv//burnin_ratio
+        
+        clean_chain_conv = chain[start_conv:ending_conv:thinning] #thinning si? Visto che la catena senza burn-in e con thinning è quella che uso alla fine mi sembra logico dire SI
+        
+        n_steps_conv = len(clean_chain_conv)
+        
+        within_chains_means = np.mean(clean_chain_conv,axis=0)
+        between_chains_means = np.mean(within_chains_means,axis=0)
+        W_averaged_within_chains_var = np.mean(np.var(clean_chain_conv,axis=0,ddof=1),axis=0)
+        B_between_chains_var = n_steps_conv*np.var(within_chains_means,axis=0,ddof=1)
+        V_variance_estimator = (n_steps_conv-1)/n_steps_conv*W_averaged_within_chains_var+1/n_steps_conv*B_between_chains_var
+        R = np.sqrt(V_variance_estimator/W_averaged_within_chains_var)
+        print(R)
+        #Multivariate functions converge when all of their margins have converged by the Cramer-Wold theorem:
+        if (R<R_limit).all():
+            convergence = 1
+                
+elapsed = time.time() - t
+
+ending = k+1 #numero passi da considerare per estrarre le statistiche della posterior - il resto sono zeri
+start = ending//burnin_ratio #quello che viene prima del burnin lo butto
+
+#np.save(work_path+'chain_'+str(i1+1), chain[:ending])
+clean_chain = chain[start:ending:thinning] #sfoltisco la catena per ridurre autocorrelazione
+
+target = np.zeros((n_parameters))
+target[0] = Frequency_true[i1]
+
+#trasformo la coordinata target (che non conosco) in range 0-1 e in coordinate fisiche
+if X_HF[i1*N_obs,2]==0:   
+    target[1] = X_HF[i1*N_obs,1]/2.
+    coord_x_target = 0.15 + X_HF[i1*N_obs,1] * 3.7
+    coord_y_target = 0.15
+else:
+    target[1] = 0.5 + X_HF[i1*N_obs,2]/2.
+    coord_x_target = 3.85
+    coord_y_target = 0.15 + X_HF[i1*N_obs,2] * 3.7
+
+#calcolo acceptance ratio
+acceptance = np.mean(np.sum(naccept[start:ending],axis=0)/start*100) #here use start since it is at the middle and the burnin period is always half of the total length of the chain
+
+#concateno le catene
+unique_chain = np.reshape(clean_chain, (len(clean_chain)*n_chains,n_parameters), 'F')
+#'C' affinaca le catene sul singolo time step; 'F' concatena le catene
+
+#estraggo statistiche della posterior
+mu_param  = np.mean(unique_chain, axis = 0)
+mode_param = st.mode(np.round(unique_chain , 2), axis=0, nan_policy='propagate')[0][0]
+mode_param[1] =  st.mode(np.round(unique_chain * 7.4 * (1/0.125) , 1), axis=0, nan_policy='propagate')[0][0][1]/7.4 * 0.125
+std_param = np.sqrt(1/(len(unique_chain)-1) * np.sum(np.square(unique_chain[:]-mu_param),axis=0))
