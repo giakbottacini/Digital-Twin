@@ -434,6 +434,9 @@ class RealNVPTF(Op):
         # Ricevi i numpy array e forza float64 per ogni operazione
         data, label_vector = inputs
 
+        # Imposta a 0 i valori tra 0 e 0.05 nel vettore delle label
+        label_vector[label_vector < 0.05] = 0.0
+
         # Assicurati che anche l'input al modello NVP sia in formato float64
         label_vector_eval = np.expand_dims(label_vector, axis=0).astype(np.float64)  # (batch_size, n_class)
 
@@ -472,20 +475,14 @@ def mcmc_classification_pymc(data, num_iterations):
         # step = pm.Metropolis()  # Usa Metropolis-Hastings come algoritmo di campionamento
         # Usare DE-Metropolis come algoritmo di campionamento
         # step = pm.DEMetropolis()
-        step = pm.DEMetropolisZ(scaling=0.2, tune_interval=100)
-        trace = pm.sample(num_iterations, cores=1, chains=2, step=step, tune=8000 , return_inferencedata=True)
+        step = pm.DEMetropolisZ(scaling=0.002, tune_interval=80)
+        trace = pm.sample(num_iterations, cores=1, chains=2, step=step, tune=6000 , return_inferencedata=True)
 
-        # # Dopo il campionamento
-        # inference_data = az.from_pymc3(trace=trace)
-        # az.plot_trace(trace)
-        # az.summary(trace)
-
-
-        # # Riassunto del campionamento
-        # summary = pm.summary(trace)
 
         # Riepilogo del campionamento
         summary = az.summary(trace)
+
+        print("print di step_accepted", {step.accepted})
 
         # Mostra la sintesi
         print(summary)
@@ -596,7 +593,7 @@ idx = np.random.randint(0, Z_test.shape[0])
 # Dato fisso da classificare
 data = Z_test[idx]
 
-n_iter = 18000  
+n_iter = 12000  
 # Esegui la classificazione con PyMC usando il vettore continuo
 accepted_labels = mcmc_classification_pymc(data, n_iter)
 
@@ -626,7 +623,7 @@ plt.figure(figsize=(15, 10))
 
 for i in range(num_labels):
     plt.subplot(2, 4, i + 1)  # Crea una griglia di 2 righe e 4 colonne
-    plt.hist(accepted_labels[i, :], bins=50, alpha=0.7, color='blue', edgecolor='black')
+    plt.hist(accepted_labels[i, :], bins=50, alpha=0.7, color='blue', edgecolor='black', range=(0,0.55))
     plt.title(f'Componente {i + 1}\nVero label: {true_label[i]:.2f}')
     plt.xlabel('Valore')
     plt.ylabel('Frequenza')
