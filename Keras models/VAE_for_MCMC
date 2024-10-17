@@ -709,8 +709,10 @@ else:
     # Caricamento dei pesi salvati
     vae.load_weights('./models/VAE_for_MCMC.weights.h5')    
     
-    import time
 
+
+
+    import time
 
     # Selezione casuale di 3 indici da Z_test
     random_indices = np.random.choice(X_test.shape[0], size=2, replace=False)
@@ -837,3 +839,36 @@ else:
     # latent_space_train_df.to_csv(full_path_train, index=False)
     # latent_space_test_df.to_csv(full_path_test, index=False)
     
+
+
+    """
+    ## Creazione latent dataset di train e test 2
+    """
+
+    X_train, labels_train, N_ist_train = read_data(path_data_train, 100)
+    X_test, labels_test, N_ist_test = read_data(path_data_test, 100)
+
+    # Usa l'encoder per ottenere i vettori latenti (media e varianza)
+    z_mean_train, z_log_var_train, _ = vae.encoder.predict(X_train)
+    z_mean_test, z_log_var_test, _ = vae.encoder.predict(X_test)
+
+    # Concatena media e varianza lungo l'asse delle colonne
+    # Questo creerà un array con la media seguita dalla varianza per ogni dimensione latente
+    z_train_combined = np.concatenate([z_mean_train, z_log_var_train], axis=1)
+    z_test_combined = np.concatenate([z_mean_test, z_log_var_test], axis=1)
+    
+    # Convertili in un dataframe per facilità di salvataggio
+    # Per chiarezza, nominiamo le colonne come "mean_0", "mean_1", ..., "var_0", "var_1", ...
+    columns_train = [f"mean_{i}" for i in range(z_mean_train.shape[1])] + [f"var_{i}" for i in range(z_log_var_train.shape[1])]
+    latent_space_train_df = pd.DataFrame(z_train_combined, columns=columns_train)
+
+    columns_test = [f"mean_{i}" for i in range(z_mean_test.shape[1])] + [f"var_{i}" for i in range(z_log_var_test.shape[1])]
+    latent_space_test_df = pd.DataFrame(z_test_combined, columns=columns_test)
+
+    # Crea il percorso completo del file
+    full_path_train = os.path.join(output_dir, "z_train2.csv")
+    full_path_test = os.path.join(output_dir, "z_test2.csv")
+
+    # Salva il dataframe in formato CSV
+    latent_space_train_df.to_csv(full_path_train, index=False)
+    latent_space_test_df.to_csv(full_path_test, index=False)
