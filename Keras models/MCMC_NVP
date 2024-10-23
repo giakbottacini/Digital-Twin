@@ -563,9 +563,9 @@ def create_confusion_matrix(csv_file):
     df['Mode Estimate'] = df['Mode Estimate'].apply(lambda x: np.array(list(map(float, x.split(',')))))
 
     # Ottieni le classi vere e quelle stimate (media e moda)
-    true_classes = df['True Label'].apply(get_predicted_class).values +1 
-    mean_predicted_classes = df['Mean Estimate'].apply(get_predicted_class).values +1
-    mode_predicted_classes = df['Mode Estimate'].apply(get_predicted_class).values +1
+    true_classes = df['True Label'].apply(get_predicted_class).values 
+    mean_predicted_classes = df['Mean Estimate'].apply(get_predicted_class).values 
+    mode_predicted_classes = df['Mode Estimate'].apply(get_predicted_class).values 
 
     # Calcola metriche per predizioni con media
     accuracy_mean = accuracy_score(true_classes, mean_predicted_classes)
@@ -619,6 +619,112 @@ def create_confusion_matrix(csv_file):
     # Aggiungi spazi tra le figure
     plt.tight_layout()
     plt.show()
+
+
+
+def cosine_similarity_media(y_true_array, y_pred_array):
+    cosine_similarities = []
+    
+    # Itera su ogni coppia di true label e predicted label
+    for y_true, y_pred in zip(y_true_array, y_pred_array):
+        dot_product = np.sum(y_true * y_pred)
+        norm_true = np.linalg.norm(y_true)
+        norm_pred = np.linalg.norm(y_pred)
+        
+        # Calcola la cosine similarity per la coppia corrente
+        cosine_similarity = dot_product / (norm_true * norm_pred)
+        cosine_similarities.append(cosine_similarity)
+    
+    # Restituisci la media delle cosine similarity
+    return np.mean(cosine_similarities)
+
+def calculate_metrics_mean(true_label_array, label_estimate_mean_array, label_estimate_mode_array):
+    # Array per le metriche RMSE
+    rmse_mean_array = []
+    rmse_mode_array = []
+
+    # Array per le metriche SMAPE
+    smape_mean_array = []
+    smape_mode_array = []
+
+    # Array per le metriche NRMSE
+    nrmse_mean_array = []
+    nrmse_mode_array = []
+
+    # Itera su ogni istanza del dataset
+    for true_label, label_estimate_mean, label_estimate_mode in zip(true_label_array, label_estimate_mean_array, label_estimate_mode_array):
+        
+        # RMSE per ogni istanza
+        mse_mean = np.mean((label_estimate_mean - true_label) ** 2)
+        mse_mode = np.mean((label_estimate_mode - true_label) ** 2)
+        rmse_mean = np.sqrt(mse_mean)
+        rmse_mode = np.sqrt(mse_mode)
+        rmse_mean_array.append(rmse_mean)
+        rmse_mode_array.append(rmse_mode)
+
+        # SMAPE per ogni istanza
+        smape_mean = 100 * np.mean(2 * np.abs(label_estimate_mean - true_label) / (np.abs(label_estimate_mean) + np.abs(true_label)))
+        smape_mode = 100 * np.mean(2 * np.abs(label_estimate_mode - true_label) / (np.abs(label_estimate_mode) + np.abs(true_label)))
+        smape_mean_array.append(smape_mean)
+        smape_mode_array.append(smape_mode)
+
+        # NRMSE per ogni istanza
+        nrmse_mean = rmse_mean / (np.max(true_label) + 0.25 - np.min(true_label))
+        nrmse_mode = rmse_mode / (np.max(true_label) + 0.25 - np.min(true_label))
+        nrmse_mean_array.append(nrmse_mean)
+        nrmse_mode_array.append(nrmse_mode)
+
+    # Calcolo della media delle metriche
+    rmse_mean_avg = np.mean(rmse_mean_array)
+    rmse_mode_avg = np.mean(rmse_mode_array)
+
+    smape_mean_avg = np.mean(smape_mean_array)
+    smape_mode_avg = np.mean(smape_mode_array)
+
+    nrmse_mean_avg = np.mean(nrmse_mean_array)
+    nrmse_mode_avg = np.mean(nrmse_mode_array)
+
+    return rmse_mean_avg, rmse_mode_avg, smape_mean_avg, smape_mode_avg, nrmse_mean_avg, nrmse_mode_avg
+
+
+def calcola_medie_normalizzate_dataset(vettori):
+    media_vicini_normalizzata_totale = []
+    media_altri_normalizzata_totale = []
+    
+    # Cicla su ogni vettore nel dataset
+    for vettore in vettori:
+        # Trova l'indice del valore massimo (classe predetta)
+        indice_max = np.argmax(vettore)
+        valore_max = vettore[indice_max]
+
+        # Calcola la media dei due valori vicini
+        if indice_max == 0:
+            # Se il massimo è il primo elemento, prendi solo il secondo
+            media_vicini = vettore[indice_max + 1]
+        elif indice_max == len(vettore) - 1:
+            # Se il massimo è l'ultimo elemento, prendi solo il penultimo
+            media_vicini = vettore[indice_max - 1]
+        else:
+            # Altrimenti, prendi il valore precedente e successivo
+            media_vicini = (vettore[indice_max - 1] + vettore[indice_max + 1]) / 2
+
+        # Calcola la media degli altri quattro elementi
+        altri_elementi = [vettore[i] for i in range(len(vettore)) if i not in [indice_max, indice_max - 1, indice_max + 1]]
+        media_altri = np.mean(altri_elementi)
+
+        # Normalizza le due medie rispetto al valore massimo
+        media_vicini_normalizzata = media_vicini / valore_max
+        media_altri_normalizzata = media_altri / valore_max
+
+        # Aggiungi le medie normalizzate alle liste totali
+        media_vicini_normalizzata_totale.append(media_vicini_normalizzata)
+        media_altri_normalizzata_totale.append(media_altri_normalizzata)
+    
+    # Calcola la media tra tutti i vettori
+    media_vicini_finale = np.mean(media_vicini_normalizzata_totale)
+    media_altri_finale = np.mean(media_altri_normalizzata_totale)
+    
+    return media_vicini_finale, media_altri_finale
 
 
 
@@ -700,6 +806,18 @@ def analyze_damage_levels(csv_file_name):
     f1_mode = f1_score(true_classes, mode_predicted_classes, average='weighted')
     conf_matrix_mode = confusion_matrix(true_classes, mode_predicted_classes)
 
+    # Cosine Similarity
+    cosine_sim_mean = cosine_similarity_media(true_labels, mean_labels)
+    cosine_sim_mode = cosine_similarity_media(true_labels, mode_labels)
+
+    # RMSE, SMAPE, NRMSE
+    rmse_mean_avg, rmse_mode_avg, smape_mean_avg, smape_mode_avg, nrmse_mean_avg, nrmse_mode_avg = calculate_metrics_mean(true_labels, mean_labels, mode_labels)
+
+    # Confronto vicini e lontani
+    media_vicini_mean, media_altri_mean = calcola_medie_normalizzate_dataset(mean_labels)
+    media_vicini_mode, media_altri_mode = calcola_medie_normalizzate_dataset(mode_labels)
+
+
     # Stampa dei risultati
     print(f"Errore Assoluto Medio (Media): {mae_mean:.4f}")
     print(f"Errore Assoluto Medio (Moda): {mae_mode:.4f}")
@@ -715,6 +833,21 @@ def analyze_damage_levels(csv_file_name):
     print(f"Precision Medio (Moda): {precision_mode:.4f}")
     print(f"Recall Medio (Moda): {recall_mode:.4f}")
     print(f"F1 Medio (Moda): {f1_mode:.4f}")
+
+    print(f"Cosine Similarity Medio (Media): {cosine_sim_mean:.4f}")
+    print(f"Cosine Similarity Medio (Moda): {cosine_sim_mode:.4f}")
+
+    print(f"RMSE Medio (Media): {rmse_mean_avg:.4f}")
+    print(f"RMSE Medio (Moda): {rmse_mode_avg:.4f}")
+    # print(f"SMAPE Medio (Media): {smape_mean_avg:.4f}")
+    # print(f"SMAPE Medio (Moda): {smape_mode_avg:.4f}")
+    print(f"NRMSE Medio (Media): {nrmse_mean_avg:.4f}")
+    print(f"NRMSE Medio (Moda): {nrmse_mode_avg:.4f}")
+
+    print(f"Media vicini normalizzata (Mean): {media_vicini_mean:.4f} | Media altri normalizzata(Mean):  {media_altri_mean:.4f}")
+    print(f"Media vicini normalizzata (Mode): {media_vicini_mode:.4f} | Media altri normalizzata(Mode):  {media_altri_mode:.4f}")
+
+
 
     print(f"Media della distanza tra prima e seconda classe più alta: {mean_distance:.4f}")
 
@@ -902,7 +1035,7 @@ print(f"Risultati salvati nel file {csv_file_name} dopo {num_iterations} iterazi
 
 
 # # Esegui la funzione con il file CSV contenente i risultati
-csv_file_name = 'mcmc_results.csv'
+csv_file_name = 'mcmc_results_sampled_5.csv'
 
 analyze_damage_levels(csv_file_name)
 create_confusion_matrix(csv_file_name)

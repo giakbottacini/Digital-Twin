@@ -403,7 +403,7 @@ class RealNVP(keras.Model):
 #---------------------------------------------------------------------------------------------------------------------------------
 
 # Creazione dell'istanza RealNVP
-NVP = RealNVP(num_coupling_layers=10, num_classes=n_class)
+NVP = RealNVP(num_coupling_layers=14, num_classes=n_class)
 
 # Caricamento dei pesi salvati
 NVP.load_weights('./models/NVP_for_MCMC.weights.h5')
@@ -477,8 +477,16 @@ def mcmc_classification_pymc(z_mean, z_log_var, num_iterations):
         # step = pm.Metropolis()  # Usa Metropolis-Hastings come algoritmo di campionamento
         # Usare DE-Metropolis come algoritmo di campionamento
         # step = pm.DEMetropolis()
-        step = pm.DEMetropolisZ(scaling=0.0003, tune_interval=80)
-        trace = pm.sample(num_iterations, cores=1, chains=2, step=step, tune=10000 , return_inferencedata=True)
+
+        step = pm.DEMetropolisZ(scaling=0.1, tune_interval=300)
+        trace = pm.sample(num_iterations, cores=1, chains=2, step=step, tune=15000 , return_inferencedata=True)
+
+        # Parametri di results_sampled_2
+        # step = pm.DEMetropolisZ(scaling=0.0003, tune_interval=750)
+        # trace = pm.sample(num_iterations, cores=1, chains=2, step=step, tune=15000 , return_inferencedata=True)
+        # Parametri di results_sampled e del 4
+        # step = pm.DEMetropolisZ(scaling=0.0003, tune_interval=80)
+        # trace = pm.sample(num_iterations, cores=1, chains=2, step=step, tune=10000 , return_inferencedata=True)
 
 
         # Riepilogo del campionamento
@@ -572,6 +580,10 @@ def append_results_to_csv(file_name, idx, true_label, samples_mcmc):
         # Trasponi l'array per avere la forma (2800, 7)
         samples_mcmc = samples_mcmc.T
         hpdi = calculate_hpdi(samples_mcmc)
+
+        # Imposta a 0 i valori inferiori a 0.05 per mean e mode
+        label_estimate_mean[label_estimate_mean < 0.05] = 0.0
+        label_estimate_mode[label_estimate_mode < 0.05] = 0.0
 
         # # Calcola le metriche di performance
         # metrics = calculate_performance_metrics(true_label, label_estimate_mean, label_estimate_mode)
@@ -966,18 +978,18 @@ def calcola_media_parametri(csv_file_name):
 ## Main
 """
 
-# Indice casuale per selezionare un campione dal dataset Z
-idx = np.random.randint(0, Z_test.shape[0]) 
+# # Indice casuale per selezionare un campione dal dataset Z
+# idx = np.random.randint(0, Z_test.shape[0]) 
 
-# Estrai le colonne di media e log-varianza per il campione selezionato
-z_mean = Z_test[['mean_0', 'mean_1', 'mean_2', 'mean_3']].to_numpy()  # Estrai le colonne delle medie
-z_log_var = Z_test[['var_0', 'var_1', 'var_2', 'var_3']].to_numpy()  # Estrai le colonne delle log-varianze
+# # Estrai le colonne di media e log-varianza per il campione selezionato
+# z_mean = Z_test[['mean_0', 'mean_1', 'mean_2', 'mean_3']].to_numpy()  # Estrai le colonne delle medie
+# z_log_var = Z_test[['var_0', 'var_1', 'var_2', 'var_3']].to_numpy()  # Estrai le colonne delle log-varianze
 
-# Definisci il numero di iterazioni per MCMC
-n_iter = 20000  
+# # Definisci il numero di iterazioni per MCMC
+# n_iter = 20000  
 
-# Esegui la classificazione con PyMC usando il vettore continuo
-# Assicurati di passare la riga completa di medie e varianze per il campione selezionato
+# # Esegui la classificazione con PyMC usando il vettore continuo
+# # Assicurati di passare la riga completa di medie e varianze per il campione selezionato
 # trace = mcmc_classification_pymc(z_mean[idx], z_log_var[idx], n_iter)
 
 
@@ -1035,10 +1047,10 @@ n_iter = 20000
 n_iter = 20000 
 
 # Nome del file CSV dove salvare i risultati
-csv_file_name = 'mcmc_results_sampled.csv'
+csv_file_name = 'mcmc_results_sampled_5.csv'
 
 # Numero di iterazioni
-num_iterations = 30
+num_iterations = 10
 
 for i in range(num_iterations):
 
@@ -1102,7 +1114,7 @@ print(f"Risultati salvati nel file {csv_file_name} dopo {num_iterations} iterazi
 
 
 # Esegui la funzione con il file CSV contenente i risultati
-# csv_file_name = 'mcmc_results_2.csv'
+# csv_file_name = 'mcmc_results_sampled_2.csv'
 # create_confusion_matrix(csv_file_name)
 # analyze_damage_levels(csv_file_name)
 
