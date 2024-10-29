@@ -24,24 +24,24 @@ import scipy.stats as st
 
 
 # Specify the example you are dealing with
-esempio = 'L_FRAME_DT'
+esempio = 'TRAIN_FRAME_DT'
 # Training and Testing data
-ID              = '7_1'
-save_ID         = 'Classifier_total_7_1/'
-path            = "../" + esempio + '/Dati/'
-path_data_train   = path + 'istantrain_' + ID
-path_data_test   = path + 'istantest_' + ID
+ID              = '2_1'
+save_ID         = '/Classifier_total_2_1/'
+path            = "../" + esempio 
+path_data_train   = path + '/istantrain_' + ID
+path_data_test   = path + '/istantest_' + ID
 # Saving model
 path_save       = "models/"
 # Prediction model
-restore_ID= 'Classifier_total_7_1/'
+restore_ID= '/Classifier_total_2_1/'
 path_restore = path + restore_ID
 
 # Which dof monitored
-which_channels = [1,2,3,4,5,6,7,8]
+which_channels = [1,2,3,4,5,6,7,8,9,10]
 
-n_channels = 8
-seq_len = 200
+n_channels = 10
+seq_len = 600
 # Specify if you are using accelerations =1 or displacements =0
 accelerations = 0
 
@@ -77,7 +77,7 @@ def read_data(path_data, addedd_SNR):
         signals_means = np.load(path_restore+'/Corrupted_signals_means.npy')
         signals_stds = np.load(path_restore+'/Corrupted_signals_stds.npy')
     # Create the dataset output structure
-    X       = np.zeros((N_ist, seq_len, n_channels))   #(10000,200,8)
+    X       = np.zeros((N_ist, seq_len, n_channels))   #(10000,600,10)
     X_noise = np.zeros((N_ist, seq_len, n_channels))
     for i1 in range(n_channels):
         path_data_var  = path_rec + str(which_channels[i1]) + '.csv'
@@ -118,9 +118,9 @@ output_dim = 256  # Opzioni 256, 512, 1024
 reg = 0.01
 
 # Number of classes in the dataset
-n_class = 8
+n_class = 7
 
-seq_len = 200
+seq_len = 600
 
 # Hyperparameters
 validation_split = 0.20
@@ -142,49 +142,10 @@ b_reg = 1e-3
 rate_drop = 0.05
 
 
-# # Mia struttura con primo Enhancement del layer embedding   accuracy 0.8 (un po' di overfitting)
-# def Coupling(input_shape=(200, 8), num_classes=n_class, reg=0.01):
-#     # Input con shape (200, 8), ovvero 200 time steps con 8 feature per step
-#     input_x = layers.Input(shape=input_shape, name='Input_X')
-#     input_y = layers.Input(shape=(num_classes,), name='Input_Label')
-    
-#     # Network per condizionare s e t in funzione del label y
-#     # Uso un piccolo MLP per una rappresentazione più complessa dell'embedding delle classi
-#     label_condition = layers.Dense(32, activation='relu')(input_y)
-#     label_condition = layers.Dense(64, activation='relu')(label_condition)
-#     label_condition = layers.Dense(128, activation='relu')(label_condition)
-#     label_embedding = layers.Dense(256, activation='relu')(label_condition) 
-
-#     # Blocchi convoluzionali per l'estrazione di caratteristiche temporali
-#     x = layers.Conv1D(filters=filter_1, kernel_size=kernel_size_1, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_1')(input_x)
-#     x = layers.MaxPooling1D()(x)
-#     x = layers.Conv1D(filters=filter_2, kernel_size=kernel_size_2, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_2')(x)
-#     x = layers.MaxPooling1D()(x)
-#     x = layers.Conv1D(filters=filter_3, kernel_size=kernel_size_3, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_3')(x)
-#     x = layers.MaxPooling1D()(x)
-#     x = layers.Flatten()(x)
-
-#     # Livelli densi per la componente t (traslazione) con condizionamento MLP
-#     t = keras.layers.Dense(128, activation="relu", kernel_regularizer=regularizers.l2(reg))(x)
-#     t_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
-#     t = layers.Concatenate()([t, t_embedding])  # Condizionamento
-#     t = keras.layers.Dense(input_shape[0] * input_shape[1], activation="linear", kernel_regularizer=regularizers.l2(reg))(t)
-#     t_reshaped = keras.layers.Reshape(input_shape)(t)
-
-#     # Livelli densi per la componente s (scalatura) con condizionamento MLP
-#     s = keras.layers.Dense(128, activation="relu", kernel_regularizer=regularizers.l2(reg))(x)
-#     s_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
-#     s = layers.Concatenate()([s, s_embedding])  # Condizionamento
-#     s = keras.layers.Dense(input_shape[0] * input_shape[1], activation="tanh", kernel_regularizer=regularizers.l2(reg))(s)
-#     s_reshaped = keras.layers.Reshape(input_shape)(s)
-
-#     return keras.Model(inputs=[input_x, input_y], outputs=[s_reshaped, t_reshaped])
-
-
 
 # Mia struttura con primo Enhancement del layer embedding ma più fit   
-def Coupling(input_shape=(200, 8), num_classes=n_class, reg=0.01):
-    # Input con shape (200, 8), ovvero 200 time steps con 8 feature per step
+def Coupling(input_shape=(600, 10), num_classes=n_class, reg=0.01):
+    # Input con shape (600, 10), ovvero 600 time steps con 10 feature per step
     input_x = layers.Input(shape=input_shape, name='Input_X')
     input_y = layers.Input(shape=(num_classes,), name='Input_Label')
     
@@ -222,43 +183,6 @@ def Coupling(input_shape=(200, 8), num_classes=n_class, reg=0.01):
 
     return keras.Model(inputs=[input_x, input_y], outputs=[s_reshaped, t_reshaped])
 
-
-# # Mia struttura con primo Enhancement del layer embedding ma ancora più fit  (Non ancora provata)
-# def Coupling(input_shape=(200, 8), num_classes=n_class, reg=0.01):
-#     # Input con shape (200, 8), ovvero 200 time steps con 8 feature per step
-#     input_x = layers.Input(shape=input_shape, name='Input_X')
-#     input_y = layers.Input(shape=(num_classes,), name='Input_Label')
-    
-#     # Network per condizionare s e t in funzione del label y
-#     # Uso un piccolo MLP per una rappresentazione più complessa dell'embedding delle classi
-#     label_condition = layers.Dense(32, activation='relu')(input_y)
-#     label_embedding = layers.Dense(64, activation='relu')(label_condition) 
-
-#     # Blocchi convoluzionali per l'estrazione di caratteristiche temporali
-#     x = layers.Conv1D(filters=filter_1, kernel_size=kernel_size_1, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_1')(input_x)
-#     x = layers.MaxPooling1D()(x)
-#     x = layers.Dropout(0.3)(x)   # Aggiungi Dropout
-#     x = layers.Conv1D(filters=filter_2, kernel_size=kernel_size_2, strides=2, padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv_2')(x)
-#     x = layers.Dropout(0.3)(x)  # Aggiungi Dropout
-
-#     x = layers.Flatten()(x)
-
-#     # Livelli densi per la componente t (traslazione) con condizionamento MLP
-#     t = keras.layers.Dense(32, activation="relu", kernel_regularizer=regularizers.l2(k_reg))(x)
-#     t_embedding = layers.Dense(32, activation='relu', kernel_regularizer=regularizers.l2(k_reg))(label_embedding)
-#     t = layers.Concatenate()([t, t_embedding])  # Condizionamento
-#     t = keras.layers.Dense(input_shape[0] * input_shape[1], activation="linear", kernel_regularizer=regularizers.l2(k_reg))(t)
-#     t_reshaped = keras.layers.Reshape(input_shape)(t)
-
-#     # Livelli densi per la componente s (scalatura) con condizionamento MLP
-#     s = keras.layers.Dense(32, activation="relu", kernel_regularizer=regularizers.l2(k_reg))(x)
-#     s_embedding = layers.Dense(32, activation='relu', kernel_regularizer=regularizers.l2(k_reg))(label_embedding)
-#     s = layers.Concatenate()([s, s_embedding])  # Condizionamento
-#     s = keras.layers.Dense(input_shape[0] * input_shape[1], activation="tanh", kernel_regularizer=regularizers.l2(k_reg))(s)
-#     s_reshaped = keras.layers.Reshape(input_shape)(s)
-
-#     return keras.Model(inputs=[input_x, input_y], outputs=[s_reshaped, t_reshaped])
-
     
 
 """
@@ -273,14 +197,14 @@ class RealNVP(keras.Model):
         self.num_coupling_layers = num_coupling_layers
         self.num_classes = num_classes
 
-        # Distribuzione dello spazio latente (200, 8)
+        # Distribuzione dello spazio latente (600, 10)
         self.distribution = tfp.distributions.MultivariateNormalDiag(
-            loc=[0.0] * 1600, scale_diag=[1.0] * 1600  # La distribuzione ha 1600 dimensioni (200 * 8)
+            loc=[0.0] * 6000, scale_diag=[1.0] * 6000  # La distribuzione ha 6000 dimensioni (600 * 10)
         )
 
         # Maschere (alterniamo metà delle dimensioni su entrambe le direzioni)
         self.masks = tf.convert_to_tensor(
-            [[0] * 800 + [1] * 800, [1] * 800 + [0] * 800] * (num_coupling_layers // 2), dtype=tf.float32
+            [[0] * 3000 + [1] * 3000, [1] * 3000 + [0] * 3000] * (num_coupling_layers // 2), dtype=tf.float32
         )
 
 
@@ -298,46 +222,13 @@ class RealNVP(keras.Model):
         self.log_likelihood_tracker = keras.metrics.Mean(name="log_likelihood")
         self.log_det_inv_tracker = keras.metrics.Mean(name="log_det_inv")
 
-        self.layers_list = [Coupling(input_shape=(200, 8), num_classes=num_classes) for i in range(num_coupling_layers)]
+        self.layers_list = [Coupling(input_shape=(600, 10), num_classes=num_classes) for i in range(num_coupling_layers)]
     
     @property
     def metrics(self):
         return [self.loss_tracker,
                 self.log_likelihood_tracker,
                 self.log_det_inv_tracker]
-
-
-    # # call modificato da me 
-    # def call(self, x, y, training=True):
-
-    #     log_det_inv = 0
-    #     direction = -1 if training else 1  # Direzione della trasformazione (invertito in training)
-
-    #     for i in range(self.num_coupling_layers)[::direction]:
-    #         # Separiamo x_A (parte trasformata) e x_B (parte invariata) tramite le maschere
-    #         mask = tf.reshape(self.masks[i], [1, 200, 8])  # Aggiungi una dimensione batch
-
-    #         x_A = x * mask  # Parte trasformata
-    #         x_B = x * (1 - mask)  # Parte invariata
-            
-    #         # Passa x_B mascherato e il label y per calcolare s(x_B) e t(x_B)
-    #         s, t = self.layers_list[i]([x_B, y])  # Funzioni di scalatura e traslazione
-            
-    #         # Applica la trasformazione diretta o inversa in base alla direzione
-    #         if direction == 1:
-    #             # In avanti: y_A = x_A * e^{s(x_B)} + t(x_B)
-    #             x_A = x_A * tf.exp(s) + t
-    #         else:
-    #             # In inverso: x_A = (y_A - t(x_B)) / e^{s(x_B)}
-    #             x_A = (x_A - t) / tf.exp(s)
-
-    #         # Ricombina x_A trasformato con x_B invariato
-    #         x = x_A * mask + x_B * (1 - mask)
-
-            
-    #         log_det_inv += tf.reduce_sum(s * mask, axis=[1, 2])  # Log-determinante su s(x_B)
-
-    #     return x, -log_det_inv
 
 
     # call con struttura iniziale 
@@ -350,7 +241,7 @@ class RealNVP(keras.Model):
             # mask = self.masks[i]  # Ottieni la maschera per il layer i-esimo
             # mask = tf.tile(mask, [tf.shape(x)[0], tf.shape(x)[1], 1])  # Replica la maschera per batch e time steps
 
-            mask = tf.reshape(self.masks[i], [1, 200, 8])  # Aggiungi una dimensione batch
+            mask = tf.reshape(self.masks[i], [1, 600, 10])  # Aggiungi una dimensione batch
             x_masked = x * mask  # Maschera l'input
             reversed_mask = 1 - mask
             s, t = self.layers_list[i]([x_masked, y])
@@ -371,8 +262,8 @@ class RealNVP(keras.Model):
         # Applica il modello per ottenere z_pred e il log-determinante del Jacobiano
         z_pred, log_det_inv = self(x, y)
 
-        # Rimodella z_pred in (None, 1600) per farlo corrispondere alla dimensione della distribuzione
-        z_pred = tf.reshape(z_pred, [-1, 1600])
+        # Rimodella z_pred in (None, 6000) per farlo corrispondere alla dimensione della distribuzione
+        z_pred = tf.reshape(z_pred, [-1, 6000])
 
         # Calcola la log-likelihood condizionata
         log_likelihood_z = self.distribution.log_prob(z_pred) 
@@ -443,8 +334,8 @@ class RealNVP(keras.Model):
 
         print(f"log_det_inv: {log_det_inv}")
 
-        # Rimodella z_pred in (None, 1600) per farlo corrispondere alla dimensione della distribuzione
-        z_pred = tf.reshape(z_pred, [-1, 1600])
+        # Rimodella z_pred in (None, 6000) per farlo corrispondere alla dimensione della distribuzione
+        z_pred = tf.reshape(z_pred, [-1, 6000])
 
         # Calcola la log-likelihood condizionata
         log_likelihood_z = self.distribution.log_prob(z_pred)
@@ -473,7 +364,7 @@ class RealNVP(keras.Model):
             z_pred, log_det_inv = self(x, current_label_repeated, training=False)
 
             # Rimodella z per adattarsi alla dimensione della distribuzione
-            z_pred = tf.reshape(z_pred, [-1, 1600])  # (batch_size, 1600)
+            z_pred = tf.reshape(z_pred, [-1, 6000])  # (batch_size, 6000)
             
             # Calcola la log-likelihood condizionata nello spazio latente
             log_likelihood_z = self.distribution.log_prob(z_pred)
@@ -529,7 +420,7 @@ def plot_class_transition_heatmap(NVP, data1, data2):
     plt.ylabel("Predicted Class (Data1)", fontsize=12)
 
     # Salva la figura
-    plt.savefig('output_NVP/class_transition_heatmap.png')
+    plt.savefig('output_NVP/class_transition_heatmap_NVP.png')
 
     # Mostra il grafico
     plt.show()
@@ -550,7 +441,7 @@ if train_or_predict:
     print(f"Forma di observations_normalized: {observations_normalized.shape}")
     print(f"Forma di damage_class_labels: {damage_class_labels.shape}")
 
-    model = RealNVP(num_coupling_layers=10, num_classes=n_class)
+    model = RealNVP(num_coupling_layers=6, num_classes=n_class)
 
     model.compile(optimizer=keras.optimizers.Adam(learning_rate=keras.optimizers.schedules.CosineDecay(initial_learning_rate=initial_lr, decay_steps=int(decay_length*n_epochs*N_ist_train*(1-validation_split)/batch_size), alpha=ratio_to_stop)))
 
@@ -622,7 +513,7 @@ else:
     output_dir = "output_NVP"
 
     # Caricamento dei dati di test
-    X_test, labels_test, N_ist_test = read_data(path_data_test, 20)
+    X_test, labels_test, N_ist_test = read_data(path_data_test, 100)
 
 
     print(f"Forma di X_test: {X_test.shape}")
@@ -644,7 +535,7 @@ else:
 
 
     # Creazione dell'istanza RealNVP
-    NVP = RealNVP(num_coupling_layers=8, num_classes=n_class)
+    NVP = RealNVP(num_coupling_layers=6, num_classes=n_class)
 
     # NVP.compile(optimizer = keras.optimizers.Adam(learning_rate=keras.optimizers.schedules.CosineDecay(initial_learning_rate=initial_lr, decay_steps=int(decay_length*n_epochs*N_ist_test*(1-validation_split)/batch_size), alpha=ratio_to_stop)))
     #Non serve compilare se non devo continuare il training
@@ -728,7 +619,7 @@ else:
     ## Analisi ulteriori
     """ 
 
-    X_test_2, labels_test_2, N_ist_test_2 = read_data(path_data_test, 100)
+    X_test_2, labels_test_2, N_ist_test_2 = read_data(path_data_test, 20)
     # test_dataset_2 = tf.data.Dataset.from_tensor_slices((X_test_2, labels_test_2))
     # test_dataset_2 = test_dataset_2.batch(batch_size)
 
@@ -740,7 +631,7 @@ else:
 
     # plot_variances_by_class(NVP, X_test, X_test_2, X_test_3)
 
-    plot_class_transition_heatmap(NVP, X_test_2, X_test_3)
+    plot_class_transition_heatmap(NVP, X_test, X_test_2)
 
 
 

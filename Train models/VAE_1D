@@ -41,25 +41,24 @@ from sklearn.metrics import roc_auc_score
 #VAE for DT
 
 # Specify the example you are dealing with
-esempio = 'L_FRAME_DT'
+esempio = 'TRAIN_FRAME_DT'
 # Training and Testing data
-ID              = '7_1'
-save_ID         = 'Classifier_total_7_1/'
-path            = "../" + esempio + '/Dati/'
-path_data_train   = path + 'istantrain_' + ID
-path_data_test   = path + 'istantest_' + ID
+ID              = '2_1'
+save_ID         = '/Classifier_total_2_1/'
+path            = "../" + esempio 
+path_data_train   = path + '/istantrain_' + ID
+path_data_test   = path + '/istantest_' + ID
 # Saving model
 path_save       = "models/"
 # Prediction model
-restore_ID= 'Classifier_total_7_1/'
+restore_ID= '/Classifier_total_2_1/'
 path_restore = path + restore_ID
 
 # Which dof monitored
-which_channels = [1,2,3,4,5,6,7,8]
+which_channels = [1,2,3,4,5,6,7,8,9,10]
 
-n_channels = 8
-seq_len = 200
-# addedd_SNR = 100
+n_channels = 10
+seq_len = 600
 # Specify if you are using accelerations =1 or displacements =0
 accelerations = 0
 
@@ -94,7 +93,7 @@ def read_data(path_data, addedd_SNR):
         signals_means = np.load(path_restore+'/Corrupted_signals_means.npy')
         signals_stds = np.load(path_restore+'/Corrupted_signals_stds.npy')
     # Create the dataset output structure
-    X = np.zeros((N_ist, seq_len, n_channels))   #(10000,200,8)
+    X = np.zeros((N_ist, seq_len, n_channels))   #(10000,600,10)
     X_noise = np.zeros((N_ist, seq_len, n_channels))
     for i1 in range(n_channels):
         path_data_var  = path_rec + str(which_channels[i1]) + '.csv'
@@ -118,9 +117,9 @@ def read_data(path_data, addedd_SNR):
         X_noise[:,:,i1] = (X_noise[:,:,i1] - signals_means[i1])/signals_stds[i1]
         # X[:,:,i1] = (X[:,:,i1] - signals_means[i1])/signals_stds[i1]
    
-    # if path_data == path_data_train:    
-    #     np.save(path_save+'Corrupted_signals_means', signals_means)
-    #     np.save(path_save+'Corrupted_signals_stds', signals_stds)
+    if path_data == path_data_train:    
+        np.save(path_restore+'Corrupted_signals_means', signals_means)
+        np.save(path_restore+'Corrupted_signals_stds', signals_stds)
        
     return X_noise, labels_class, N_ist
 
@@ -145,7 +144,7 @@ def read_data_rumored(path_data, addedd_SNR):
         signals_stds = np.load(path_restore+'/Corrupted_signals_stds.npy')
 
     # Create the dataset output structure
-    X       = np.zeros((N_ist, seq_len, n_channels))   #(10000,200,8)
+    X       = np.zeros((N_ist, seq_len, n_channels))   #(10000,600,10)
     X_noise = np.zeros((N_ist, seq_len, n_channels))
 
     for i1 in range(n_channels):
@@ -213,7 +212,7 @@ class Sampling(layers.Layer):
 ## Using Matteo's architecture
 """
 
-n_class = 8
+n_class = 7  # Numero di classi di danno che ho 
 latent_dim = 4
 
 # Hyperparameters
@@ -489,36 +488,36 @@ def plot_label_clusters_3d(vae, data, labels):
 
 
     # Plot using MDS
-    mds = MDS(n_components=3)
-    z_mds = mds.fit_transform(z_mean)
+    # mds = MDS(n_components=3)
+    # z_mds = mds.fit_transform(z_mean)
 
-    fig = plt.figure(figsize=(12, 10))
-    ax = fig.add_subplot(111, projection='3d')
-    scatter = ax.scatter(z_mds[:, 0], z_mds[:, 1], z_mds[:, 2], c=labels, cmap='viridis')
-    color_bar = fig.colorbar(scatter, ax=ax)
-    color_bar.set_label('Classi')
-    ax.set_xlabel("MDS[0]")
-    ax.set_ylabel("MDS[1]")
-    ax.set_zlabel("MDS[2]")
-    plt.suptitle(f'Grouped by damage class in 3D latent space using MDS', fontsize=16)
-    plt.savefig(os.path.join(output_dir, "label_clusters_mds_3d.png"))
-    plt.show()
+    # fig = plt.figure(figsize=(12, 10))
+    # ax = fig.add_subplot(111, projection='3d')
+    # scatter = ax.scatter(z_mds[:, 0], z_mds[:, 1], z_mds[:, 2], c=labels, cmap='viridis')
+    # color_bar = fig.colorbar(scatter, ax=ax)
+    # color_bar.set_label('Classi')
+    # ax.set_xlabel("MDS[0]")
+    # ax.set_ylabel("MDS[1]")
+    # ax.set_zlabel("MDS[2]")
+    # plt.suptitle(f'Grouped by damage class in 3D latent space using MDS', fontsize=16)
+    # plt.savefig(os.path.join(output_dir, "label_clusters_mds_3d.png"))
+    # plt.show()
 
     # Plot using TSNE  (in teoria serve più che altro se hai input categoriale)
-    tsne = TSNE(n_components=3)
-    z_tsne = tsne.fit_transform(z_mean)
+    # tsne = TSNE(n_components=3)
+    # z_tsne = tsne.fit_transform(z_mean)
 
-    fig = plt.figure(figsize=(12, 10))
-    ax = fig.add_subplot(111, projection='3d')
-    scatter = ax.scatter(z_tsne[:, 0], z_tsne[:, 1], z_tsne[:, 2], c=labels, cmap='viridis')
-    color_bar = fig.colorbar(scatter, ax=ax)
-    color_bar.set_label('Classi')
-    ax.set_xlabel("TSNE[0]")
-    ax.set_ylabel("TSNE[1]")
-    ax.set_zlabel("TSNE[2]")
-    plt.suptitle(f'Grouped by damage class in 3D latent space using TSNE', fontsize=16)
-    plt.savefig(os.path.join(output_dir, "label_clusters_tsne_3d.png"))
-    plt.show()
+    # fig = plt.figure(figsize=(12, 10))
+    # ax = fig.add_subplot(111, projection='3d')
+    # scatter = ax.scatter(z_tsne[:, 0], z_tsne[:, 1], z_tsne[:, 2], c=labels, cmap='viridis')
+    # color_bar = fig.colorbar(scatter, ax=ax)
+    # color_bar.set_label('Classi')
+    # ax.set_xlabel("TSNE[0]")
+    # ax.set_ylabel("TSNE[1]")
+    # ax.set_zlabel("TSNE[2]")
+    # plt.suptitle(f'Grouped by damage class in 3D latent space using TSNE', fontsize=16)
+    # plt.savefig(os.path.join(output_dir, "label_clusters_tsne_3d.png"))
+    # plt.show()
 
     # Plot using PCA
     pca = PCA(n_components=3)
@@ -543,21 +542,21 @@ def plot_variances_by_class(vae, data1, data2, data3):
     # Estrai z_log_var per ciascun dataset
     _, z_log_var1, _ = vae.encoder.predict(data1, verbose=0)
     _, z_log_var2, _ = vae.encoder.predict(data2, verbose=0)
-    _, z_log_var3, _ = vae.encoder.predict(data3, verbose=0)
+    # _, z_log_var3, _ = vae.encoder.predict(data3, verbose=0)
 
     X_test_reconstructed_1, X_test_classified_1 = vae.predict(data1)
     X_test_reconstructed_2, X_test_classified_2 = vae.predict(data2)
-    X_test_reconstructed_3, X_test_classified_3 = vae.predict(data3)
+    # X_test_reconstructed_3, X_test_classified_3 = vae.predict(data3)
 
     predicted_classes_1 = np.argmax(X_test_classified_1, axis=1)
     predicted_classes_2 = np.argmax(X_test_classified_1, axis=1)
-    predicted_classes_3 = np.argmax(X_test_classified_1, axis=1)
+    # predicted_classes_3 = np.argmax(X_test_classified_1, axis=1)
 
 
     # Calcola le varianze dallo z_log_var
     variances1 = np.exp(z_log_var1)
     variances2 = np.exp(z_log_var2)
-    variances3 = np.exp(z_log_var3)
+    # variances3 = np.exp(z_log_var3)
 
     # Crea una figura con 8 sottografi (2x4 griglia)
     fig, axes = plt.subplots(2, 4, figsize=(20, 10))
@@ -568,28 +567,28 @@ def plot_variances_by_class(vae, data1, data2, data3):
         # Seleziona i dati appartenenti alla classe i per ciascun dataset
         class_indices_1 = np.where(predicted_classes_1 == i)[0]
         class_indices_2 = np.where(predicted_classes_2 == i)[0]
-        class_indices_3 = np.where(predicted_classes_3 == i)[0]
+        # class_indices_3 = np.where(predicted_classes_3 == i)[0]
         
         # Estrai le varianze per ciascuna classe in ciascun dataset
         class_variances1 = variances1[class_indices_1]
         class_variances2 = variances2[class_indices_2]
-        class_variances3 = variances3[class_indices_3]
+        # class_variances3 = variances3[class_indices_3]
 
-        # # Plotta i 3 istogrammi sovrapposti (uno per ciascun dataset)
-        # if len(class_variances1) > 0:
-        #     axes[i].hist(class_variances1.flatten(), bins=30, alpha=0.5, color='blue', edgecolor='black', label='Data1 = meno rumoroso')
-        # if len(class_variances2) > 0:
-        #     axes[i].hist(class_variances2.flatten(), bins=30, alpha=0.5, color='orange', edgecolor='black', label='Data2 = medio rumoroso')
+        # Plotta i 3 istogrammi sovrapposti (uno per ciascun dataset)
+        if len(class_variances1) > 0:
+            axes[i].hist(class_variances1.flatten(), bins=30, alpha=1, color='blue', edgecolor='black', label='Data1 = meno rumoroso', density=True)
+        if len(class_variances2) > 0:
+            axes[i].hist(class_variances2.flatten(), bins=30, alpha=1, color='orange', edgecolor='black', label='Data2 = medio rumoroso', density=True)
         # if len(class_variances3) > 0:
         #     axes[i].hist(class_variances3.flatten(), bins=30, alpha=0.5, color='green', edgecolor='black', label='Data3 = più rumoroso')
 
-        # Plotta le curve di densità per ciascun dataset (KDE)
-        if len(class_variances1) > 0:
-            sns.kdeplot(class_variances1.flatten(), ax=axes[i], color='blue', label='Data1 = meno rumoroso')
-        if len(class_variances2) > 0:
-            sns.kdeplot(class_variances2.flatten(), ax=axes[i], color='orange', label='Data2 = medio rumoroso')
-        if len(class_variances3) > 0:
-            sns.kdeplot(class_variances3.flatten(), ax=axes[i], color='green', label='Data3 = più rumoroso')
+        # # Plotta le curve di densità per ciascun dataset (KDE)
+        # if len(class_variances1) > 0:
+        #     sns.kdeplot(class_variances1.flatten(), ax=axes[i], color='blue', label='Data1 = meno rumoroso')
+        # if len(class_variances2) > 0:
+        #     sns.kdeplot(class_variances2.flatten(), ax=axes[i], color='orange', label='Data2 = medio rumoroso')
+        # if len(class_variances3) > 0:
+        #     sns.kdeplot(class_variances3.flatten(), ax=axes[i], color='green', label='Data3 = più rumoroso')
         
         # Titolo per ciascun sottografo
         axes[i].set_title(f'Class {i} Variance Distribution')
@@ -617,15 +616,15 @@ def plot_means_by_class(vae, data1, data2, data3):
     # Estrai z_mean per ciascun dataset
     z_mean1, _, _ = vae.encoder.predict(data1, verbose=0)
     z_mean2, _, _ = vae.encoder.predict(data2, verbose=0)
-    z_mean3, _, _ = vae.encoder.predict(data3, verbose=0)
+    # z_mean3, _, _ = vae.encoder.predict(data3, verbose=0)
 
     X_test_reconstructed_1, X_test_classified_1 = vae.predict(data1)
     X_test_reconstructed_2, X_test_classified_2 = vae.predict(data2)
-    X_test_reconstructed_3, X_test_classified_3 = vae.predict(data3)
+    # X_test_reconstructed_3, X_test_classified_3 = vae.predict(data3)
 
     predicted_classes_1 = np.argmax(X_test_classified_1, axis=1)
     predicted_classes_2 = np.argmax(X_test_classified_2, axis=1)
-    predicted_classes_3 = np.argmax(X_test_classified_3, axis=1)
+    # predicted_classes_3 = np.argmax(X_test_classified_3, axis=1)
 
     # Crea una figura con 8 sottografi (2x4 griglia)
     fig, axes = plt.subplots(2, 4, figsize=(20, 10))
@@ -636,20 +635,24 @@ def plot_means_by_class(vae, data1, data2, data3):
         # Seleziona i dati appartenenti alla classe i per ciascun dataset
         class_indices_1 = np.where(predicted_classes_1 == i)[0]
         class_indices_2 = np.where(predicted_classes_2 == i)[0]
-        class_indices_3 = np.where(predicted_classes_3 == i)[0]
+        # class_indices_3 = np.where(predicted_classes_3 == i)[0]
 
         # Estrai le medie per ciascuna classe in ciascun dataset
         class_means1 = z_mean1[class_indices_1]
         class_means2 = z_mean2[class_indices_2]
-        class_means3 = z_mean3[class_indices_3]
+        # class_means3 = z_mean3[class_indices_3]
 
         # Plotta le curve di densità per ciascun dataset (KDE)
+        # if len(class_means1) > 0:
+        #     sns.kdeplot(class_means1.flatten(), ax=axes[i], color='blue', label='Data1 = meno rumoroso')
+        # if len(class_means2) > 0:
+        #     sns.kdeplot(class_means2.flatten(), ax=axes[i], color='orange', label='Data2 = medio rumoroso')
+        # if len(class_means3) > 0:
+        #     sns.kdeplot(class_means3.flatten(), ax=axes[i], color='green', label='Data3 = più rumoroso')
         if len(class_means1) > 0:
-            sns.kdeplot(class_means1.flatten(), ax=axes[i], color='blue', label='Data1 = meno rumoroso')
+            axes[i].hist(class_means1.flatten(), bins=30, alpha=1, color='blue', edgecolor='black', label='Data1 = meno rumoroso', density=True)
         if len(class_means2) > 0:
-            sns.kdeplot(class_means2.flatten(), ax=axes[i], color='orange', label='Data2 = medio rumoroso')
-        if len(class_means3) > 0:
-            sns.kdeplot(class_means3.flatten(), ax=axes[i], color='green', label='Data3 = più rumoroso')
+            axes[i].hist(class_means2.flatten(), bins=30, alpha=1, color='orange', edgecolor='black', label='Data2 = medio rumoroso', density=True)
 
         # Titolo per ciascun sottografo
         axes[i].set_title(f'Class {i} Mean Distribution')
@@ -705,6 +708,7 @@ def plot_class_transition_heatmap(vae, data1, data2):
 
     plt.legend()
     plt.title(f"Segnale Meno Rumore vs Segnale Più Rumore - Esempio {idx}")
+    plt.savefig('output_VAE_1D/signal_confront.png')
     plt.show()
 
     # Costruisci la matrice di transizione (matrice di confusione tra le due predizioni)
@@ -1066,7 +1070,7 @@ else:
     """
 
     # Caricamento dei dati di test
-    X_test, labels_test, N_ist_test = read_data_rumored(path_data_test, 10)
+    X_test, labels_test, N_ist_test = read_data_rumored(path_data_test, 100)
 
     print(f"Forma di X_test: {X_test.shape}")
 
@@ -1192,21 +1196,21 @@ else:
     """
     ## Analisi ulteriori
     """
-    X_test_2, labels_test_2, N_ist_test_2 = read_data_rumored(path_data_test, 10)
+    X_test_2, labels_test_2, N_ist_test_2 = read_data_rumored(path_data_test, 20)
     # test_dataset_2 = tf.data.Dataset.from_tensor_slices((X_test_2, labels_test_2))
     # test_dataset_2 = test_dataset_2.batch(batch_size)
 
-    X_test_3, labels_test_3, N_ist_test_3 = read_data_rumored(path_data_test, 5)
+    X_test_3, labels_test_3, N_ist_test_3 = read_data_rumored(path_data_test, 10)
     # test_dataset_3 = tf.data.Dataset.from_tensor_slices((X_test_3, labels_test_3))
     # test_dataset_3 = test_dataset_3.batch(batch_size)
 
     # plot_label_clusters_3d(vae, X_test, predicted_classes)   #Plotta il clustering rispetto al label classificato dei dati test nello spazio latente
 
-    plot_class_transition_heatmap(vae, X_test, X_test_2)   #Plotta transition_map da X_test_2 a X_test_3
+    # plot_class_transition_heatmap(vae, X_test, X_test_2)   #Plotta transition_map da X_test_2 a X_test_3
 
 
     # plot_variances_by_class(vae, X_test, X_test_2, X_test_3)  #Plotta densità variances per classe per i tre dataset
-    # plot_means_by_class(vae, X_test, X_test_2, X_test_3)    #Plotta densità variances per classe per i tre dataset
+    plot_means_by_class(vae, X_test, X_test_2, X_test_3)    #Plotta densità variances per classe per i tre dataset
 
     # df = variation_mean_and_var(vae, X_test_2, X_test_3)   #Restituisce file densità variances per classe per i due dataset
     
@@ -1217,4 +1221,4 @@ else:
     # plot_confidence_histogram_per_class(X_test_classified, predicted_classes)  
     # plot_margin_histogram_per_class(X_test_classified, predicted_classes)
 
-    plot_roc_curve(labels_test, X_test_classified)   #Plotta roc curve per classe della classificazione ottenuta da X_test
+    # plot_roc_curve(labels_test, X_test_classified)   #Plotta roc curve per classe della classificazione ottenuta da X_test

@@ -29,29 +29,26 @@ from sklearn.decomposition import PCA
 
 
 # Specify the example you are dealing with
-esempio = 'L_FRAME_DT'
+esempio = 'TRAIN_FRAME_DT'
 # Training and Testing data
-ID              = '7_1'
-save_ID         = 'Classifier_total_7_1/'
-path            = "../" + esempio + '/Dati/'
-path_data_train   = path + 'istantrain_' + ID
-path_data_test   = path + 'istantest_' + ID
+ID              = '2_1'
+save_ID         = '/Classifier_total_2_1/'
+path            = "../" + esempio 
+path_data_train   = path + '/istantrain_' + ID
+path_data_test   = path + '/istantest_' + ID
 # Saving model
 path_save       = "models/"
 # Prediction model
-restore_ID= 'Classifier_total_7_1/'
+restore_ID= '/Classifier_total_2_1/'
 path_restore = path + restore_ID
 
 # Which dof monitored
-which_channels = [1,2,3,4,5,6,7,8]
+which_channels = [1,2,3,4,5,6,7,8,9,10]
 
-n_channels = 8
-seq_len = 200
-# addedd_SNR = 100
+n_channels = 10
+seq_len = 600
 # Specify if you are using accelerations =1 or displacements =0
 accelerations = 0
-
-
 
 
 
@@ -111,8 +108,8 @@ def read_data(path_data, addedd_SNR):
     for i1 in range(n_channels):
         X_noise[:,:,i1] = (X_noise[:,:,i1] - signals_means[i1]) / signals_stds[i1]
         
-    # Creazione dei vettori di label di 7 elementi
-    labels_vector = np.zeros((N_ist, 7))  # Vettore di etichette a 7 classi
+    # Creazione dei vettori di label di n_class elementi
+    labels_vector = np.zeros((N_ist, n_class))  # Vettore di etichette a 7 classi
     
     for i, idx in enumerate(valid_indices):
         # Inserisci il damage_level nella posizione corretta in base alla classe di danno
@@ -161,7 +158,7 @@ class Sampling(layers.Layer):
 ## Using Matteo's architecture
 """
 
-n_class = 7
+n_class = 6
 latent_dim = 4
 
 # Hyperparameters
@@ -820,29 +817,29 @@ else:
     ## Creazione latent dataset di train e test
     """
 
-    # X_train, labels_train, N_ist_train = read_data(path_data_train, 100)
-    # X_test, labels_test, N_ist_test = read_data(path_data_test, 100)
+    X_train, labels_train, N_ist_train = read_data(path_data_train, 100)
+    X_test, labels_test, N_ist_test = read_data(path_data_test, 100)
 
-    # # Usa l'encoder per ottenere i vettori latenti
-    # _, _, z_train = vae.encoder.predict(X_train)
-    # _, _, z_test = vae.encoder.predict(X_test)
+    # Usa l'encoder per ottenere i vettori latenti
+    _, _, z_train = vae.encoder.predict(X_train)
+    _, _, z_test = vae.encoder.predict(X_test)
     
-    # # Convertili in un dataframe per facilità di salvataggio
-    # latent_space_train_df = pd.DataFrame(z_train)
-    # latent_space_test_df = pd.DataFrame(z_test)
+    # Convertili in un dataframe per facilità di salvataggio
+    latent_space_train_df = pd.DataFrame(z_train)
+    latent_space_test_df = pd.DataFrame(z_test)
     
-    # # Crea il percorso completo del file
-    # full_path_train = os.path.join(output_dir, "z_train.csv")
-    # full_path_test = os.path.join(output_dir, "z_test.csv")
+    # Crea il percorso completo del file
+    full_path_train = os.path.join(output_dir, "z_train.csv")
+    full_path_test = os.path.join(output_dir, "z_test.csv")
     
-    # # Salva il dataframe in formato CSV
-    # latent_space_train_df.to_csv(full_path_train, index=False)
-    # latent_space_test_df.to_csv(full_path_test, index=False)
+    # Salva il dataframe in formato CSV
+    latent_space_train_df.to_csv(full_path_train, index=False)
+    latent_space_test_df.to_csv(full_path_test, index=False)
     
 
 
     """
-    ## Creazione latent dataset di train e test 2
+    ## Creazione latent dataset di train e test 2 per mcmc_2
     """
 
     X_train, labels_train, N_ist_train = read_data(path_data_train, 100)

@@ -30,7 +30,7 @@ import arviz as az
 
 
 EXPECTED_SHAPE_X = [None, 4]  # La dimensione batch può variare, ma x ha sempre 4 elementi
-EXPECTED_SHAPE_Y = [None, 7]  # La dimensione batch può variare, ma y ha sempre 7 elementi
+EXPECTED_SHAPE_Y = [None, 6]  # La dimensione batch può variare, ma y ha sempre 7 elementi
 
 import multiprocessing
 
@@ -45,35 +45,34 @@ import multiprocessing
 
 
 # Specify the example you are dealing with
-esempio = 'L_FRAME_DT'
+esempio = 'TRAIN_FRAME_DT'
 # Training and Testing data
-ID              = '7_1'
-save_ID         = 'Classifier_total_7_1/'
-path            = "../" + esempio + '/Dati/'
-path_data_train   = path + 'istantrain_' + ID
-path_data_test   = path + 'istantest_' + ID
+ID              = '2_1'
+save_ID         = '/Classifier_total_2_1/'
+path            = "../" + esempio 
+path_data_train   = path + '/istantrain_' + ID
+path_data_test   = path + '/istantest_' + ID
 # Saving model
 path_save       = "models/"
 # Prediction model
-restore_ID= 'Classifier_total_7_1/'
+restore_ID = '/Classifier_total_2_1/'
 path_restore = path + restore_ID
 
 path_z = "output_VAE_for_MCMC"
 
-
 # Which dof monitored
-which_channels = [1,2,3,4,5,6,7,8]
+which_channels = [1,2,3,4,5,6,7,8,9,10]
 
-n_channels = 8
-seq_len = 200
-# addedd_SNR = 100
+n_channels = 10
+seq_len = 600
 # Specify if you are using accelerations =1 or displacements =0
 accelerations = 0
 
 
 latent_dim = 4
 
-
+# Number of classes in the dataset
+n_class = 6
 
 
 def RMS(signal):
@@ -102,7 +101,7 @@ def read_data(path_data, train):
 
 
     # Creazione dei vettori di label di 7 elementi
-    labels_vector = np.zeros((N_ist, 7))  # Vettore di etichette a 7 classi
+    labels_vector = np.zeros((N_ist, n_class))  # Vettore di etichette a 7 classi
     
     for i, idx in enumerate(valid_indices):
         # Inserisci il damage_level nella posizione corretta in base alla classe di danno
@@ -123,9 +122,6 @@ def read_data(path_data, train):
 output_dim = 256  # Opzioni 256, 512, 1024
 reg = 0.01
 
-# Number of classes in the dataset
-n_class = 7
-
 
 # Hyperparameters
 validation_split = 0.20
@@ -145,7 +141,6 @@ attivaz_mlp = 'tanh'
 k_reg = 1e-3
 b_reg = 1e-3
 rate_drop = 0.05
-
 
 
 # Struttura senza Dropout  
@@ -561,6 +556,38 @@ import csv
 #         writer.writerow([idx, true_label_str, mean_label_str, mode_label_str])
 
 
+def calculate_hpdi(samples, alpha=0.05):
+
+    # Numero di campioni
+    n_samples = samples.shape[0]
+    
+    # Percentuale da includere nell'HPDI (es. 95% -> include 95% dei campioni)
+    credible_mass = 1.0 - alpha
+    
+    # HPDI per ciascuna dimensione
+    hpdi = np.zeros((2, samples.shape[1]))
+    
+    # Calcola l'HPDI per ogni dimensione del vettore di label
+    for dim in range(samples.shape[1]):
+        # Ordina i campioni per quella dimensione
+        sorted_samples = np.sort(samples[:, dim])
+        
+        # Numero di campioni da includere nell'HPDI
+        interval_idx_inc = int(np.floor(credible_mass * n_samples))
+        
+        # Trova l'ampiezza minima dell'intervallo
+        interval_width = sorted_samples[interval_idx_inc:] - sorted_samples[:n_samples - interval_idx_inc]
+        
+        # Trova l'indice dell'intervallo più stretto
+        min_idx = np.argmin(interval_width)
+        
+        # Assegna i limiti inferiore e superiore dell'HPDI
+        hpdi[0, dim] = sorted_samples[min_idx]
+        hpdi[1, dim] = sorted_samples[min_idx + interval_idx_inc]
+    
+    return hpdi
+
+
 # Funzione che salva i risultati in un file CSV
 def append_results_to_csv(file_name, idx, true_label, samples_mcmc):
     # Se il file non esiste, crealo e aggiungi l'intestazione
@@ -728,7 +755,120 @@ def create_confusion_matrix(csv_file):
 
     # Aggiungi spazi tra le figure
     plt.tight_layout()
+
+    # Salva il grafico in un file immagine
+    plt.savefig("output_MCMC_NVP_2/Conf_Matrix_MCMC")
+
     plt.show()
+
+
+
+def cosine_similarity_media(y_true_array, y_pred_array):
+    cosine_similarities = []
+    
+    # Itera su ogni coppia di true label e predicted label
+    for y_true, y_pred in zip(y_true_array, y_pred_array):
+        dot_product = np.sum(y_true * y_pred)
+        norm_true = np.linalg.norm(y_true)
+        norm_pred = np.linalg.norm(y_pred)
+        
+        # Calcola la cosine similarity per la coppia corrente
+        cosine_similarity = dot_product / (norm_true * norm_pred)
+        cosine_similarities.append(cosine_similarity)
+    
+    # Restituisci la media delle cosine similarity
+    return np.mean(cosine_similarities)
+
+
+def calculate_metrics_mean(true_label_array, label_estimate_mean_array, label_estimate_mode_array):
+    # Array per le metriche RMSE
+    rmse_mean_array = []
+    rmse_mode_array = []
+
+    # Array per le metriche SMAPE
+    smape_mean_array = []
+    smape_mode_array = []
+
+    # Array per le metriche NRMSE
+    nrmse_mean_array = []
+    nrmse_mode_array = []
+
+    # Itera su ogni istanza del dataset
+    for true_label, label_estimate_mean, label_estimate_mode in zip(true_label_array, label_estimate_mean_array, label_estimate_mode_array):
+        
+        # RMSE per ogni istanza
+        mse_mean = np.mean((label_estimate_mean - true_label) ** 2)
+        mse_mode = np.mean((label_estimate_mode - true_label) ** 2)
+        rmse_mean = np.sqrt(mse_mean)
+        rmse_mode = np.sqrt(mse_mode)
+        rmse_mean_array.append(rmse_mean)
+        rmse_mode_array.append(rmse_mode)
+
+        # SMAPE per ogni istanza
+        smape_mean = 100 * np.mean(2 * np.abs(label_estimate_mean - true_label) / (np.abs(label_estimate_mean) + np.abs(true_label)))
+        smape_mode = 100 * np.mean(2 * np.abs(label_estimate_mode - true_label) / (np.abs(label_estimate_mode) + np.abs(true_label)))
+        smape_mean_array.append(smape_mean)
+        smape_mode_array.append(smape_mode)
+
+        # NRMSE per ogni istanza
+        nrmse_mean = rmse_mean / (np.max(true_label) + 0.25 - np.min(true_label))
+        nrmse_mode = rmse_mode / (np.max(true_label) + 0.25 - np.min(true_label))
+        nrmse_mean_array.append(nrmse_mean)
+        nrmse_mode_array.append(nrmse_mode)
+
+    # Calcolo della media delle metriche
+    rmse_mean_avg = np.mean(rmse_mean_array)
+    rmse_mode_avg = np.mean(rmse_mode_array)
+
+    smape_mean_avg = np.mean(smape_mean_array)
+    smape_mode_avg = np.mean(smape_mode_array)
+
+    nrmse_mean_avg = np.mean(nrmse_mean_array)
+    nrmse_mode_avg = np.mean(nrmse_mode_array)
+
+    return rmse_mean_avg, rmse_mode_avg, smape_mean_avg, smape_mode_avg, nrmse_mean_avg, nrmse_mode_avg
+
+
+def calcola_medie_normalizzate_dataset(vettori):
+    media_vicini_normalizzata_totale = []
+    media_altri_normalizzata_totale = []
+    
+    # Cicla su ogni vettore nel dataset
+    for vettore in vettori:
+        # Trova l'indice del valore massimo (classe predetta)
+        indice_max = np.argmax(vettore)
+        valore_max = vettore[indice_max]
+
+        # Calcola la media dei due valori vicini
+        if indice_max == 0:
+            # Se il massimo è il primo elemento, prendi solo il secondo
+            media_vicini = vettore[indice_max + 1]
+        elif indice_max == len(vettore) - 1:
+            # Se il massimo è l'ultimo elemento, prendi solo il penultimo
+            media_vicini = vettore[indice_max - 1]
+        else:
+            # Altrimenti, prendi il valore precedente e successivo
+            media_vicini = (vettore[indice_max - 1] + vettore[indice_max + 1]) / 2
+
+        # Calcola la media degli altri quattro elementi
+        altri_elementi = [vettore[i] for i in range(len(vettore)) if i not in [indice_max, indice_max - 1, indice_max + 1]]
+        media_altri = np.mean(altri_elementi)
+
+        # Normalizza le due medie rispetto al valore massimo
+        media_vicini_normalizzata = media_vicini / valore_max
+        media_altri_normalizzata = media_altri / valore_max
+
+        # Aggiungi le medie normalizzate alle liste totali
+        media_vicini_normalizzata_totale.append(media_vicini_normalizzata)
+        media_altri_normalizzata_totale.append(media_altri_normalizzata)
+    
+    # Calcola la media tra tutti i vettori
+    media_vicini_finale = np.mean(media_vicini_normalizzata_totale)
+    media_altri_finale = np.mean(media_altri_normalizzata_totale)
+    
+    return media_vicini_finale, media_altri_finale
+
+
 
 
 
@@ -738,8 +878,8 @@ def analyze_damage_levels(csv_file_name):
     
     # Estrai le colonne necessarie
     true_labels = df['True Label'].apply(lambda x: np.fromstring(x, sep=',')).to_list()
-    mean_labels = df['Mean Label Estimate'].apply(lambda x: np.fromstring(x, sep=',')).to_list()
-    mode_labels = df['Mode Label Estimate'].apply(lambda x: np.fromstring(x, sep=',')).to_list()
+    mean_labels = df['Mean Estimate'].apply(lambda x: np.fromstring(x, sep=',')).to_list()
+    mode_labels = df['Mode Estimate'].apply(lambda x: np.fromstring(x, sep=',')).to_list()
 
     # Converti in array NumPy per un'elaborazione più semplice
     true_labels = np.array(true_labels)
@@ -783,176 +923,74 @@ def analyze_damage_levels(csv_file_name):
     
     mean_distance = np.mean(distances)  # Media delle distanze
 
+    # Converti le colonne 'True Label', 'Mean Estimate' e 'Mode Estimate' da stringhe a array di float
+    df['True Label'] = df['True Label'].apply(lambda x: np.array(list(map(float, x.split(',')))))
+    df['Mean Estimate'] = df['Mean Estimate'].apply(lambda x: np.array(list(map(float, x.split(',')))))
+    df['Mode Estimate'] = df['Mode Estimate'].apply(lambda x: np.array(list(map(float, x.split(',')))))
+
+    # Ottieni le classi vere e quelle stimate (media e moda)
+    true_classes = df['True Label'].apply(get_predicted_class).values +1 
+    mean_predicted_classes = df['Mean Estimate'].apply(get_predicted_class).values +1
+    mode_predicted_classes = df['Mode Estimate'].apply(get_predicted_class).values +1
+
+    # Calcola metriche per predizioni con media
+    accuracy_mean = accuracy_score(true_classes, mean_predicted_classes)
+    precision_mean = precision_score(true_classes, mean_predicted_classes, average='weighted')
+    recall_mean = recall_score(true_classes, mean_predicted_classes, average='weighted')
+    f1_mean = f1_score(true_classes, mean_predicted_classes, average='weighted')
+    conf_matrix_mean = confusion_matrix(true_classes, mean_predicted_classes)
+
+    # Calcola metriche per predizioni con moda
+    accuracy_mode = accuracy_score(true_classes, mode_predicted_classes)
+    precision_mode = precision_score(true_classes, mode_predicted_classes, average='weighted')
+    recall_mode = recall_score(true_classes, mode_predicted_classes, average='weighted')
+    f1_mode = f1_score(true_classes, mode_predicted_classes, average='weighted')
+    conf_matrix_mode = confusion_matrix(true_classes, mode_predicted_classes)
+
+    # Cosine Similarity
+    cosine_sim_mean = cosine_similarity_media(true_labels, mean_labels)
+    cosine_sim_mode = cosine_similarity_media(true_labels, mode_labels)
+
+    # RMSE, SMAPE, NRMSE
+    rmse_mean_avg, rmse_mode_avg, smape_mean_avg, smape_mode_avg, nrmse_mean_avg, nrmse_mode_avg = calculate_metrics_mean(true_labels, mean_labels, mode_labels)
+
+    # Confronto vicini e lontani
+    media_vicini_mean, media_altri_mean = calcola_medie_normalizzate_dataset(mean_labels)
+    media_vicini_mode, media_altri_mode = calcola_medie_normalizzate_dataset(mode_labels)
+
+
     # Stampa dei risultati
     print(f"Errore Assoluto Medio (Media): {mae_mean:.4f}")
     print(f"Errore Assoluto Medio (Moda): {mae_mode:.4f}")
     print(f"Errore Relativo Medio (Media): {relative_error_mean:.4f}")
     print(f"Errore Relativo Medio (Moda): {relative_error_mode:.4f}")
+
+    print(f"Accuracy Medio (Media): {accuracy_mean:.4f}")
+    print(f"Precision Medio (Media): {precision_mean:.4f}")
+    print(f"Recall Medio (Media): {recall_mean:.4f}")
+    print(f"F1 Medio (Media): {f1_mean:.4f}")
+
+    print(f"Accuracy Medio (Moda): {accuracy_mode:.4f}")
+    print(f"Precision Medio (Moda): {precision_mode:.4f}")
+    print(f"Recall Medio (Moda): {recall_mode:.4f}")
+    print(f"F1 Medio (Moda): {f1_mode:.4f}")
+
+    print(f"Cosine Similarity Medio (Media): {cosine_sim_mean:.4f}")
+    print(f"Cosine Similarity Medio (Moda): {cosine_sim_mode:.4f}")
+
+    print(f"RMSE Medio (Media): {rmse_mean_avg:.4f}")
+    print(f"RMSE Medio (Moda): {rmse_mode_avg:.4f}")
+    # print(f"SMAPE Medio (Media): {smape_mean_avg:.4f}")
+    # print(f"SMAPE Medio (Moda): {smape_mode_avg:.4f}")
+    print(f"NRMSE Medio (Media): {nrmse_mean_avg:.4f}")
+    print(f"NRMSE Medio (Moda): {nrmse_mode_avg:.4f}")
+
+    print(f"Media vicini normalizzata (Mean): {media_vicini_mean:.4f} | Media altri normalizzata(Mean):  {media_altri_mean:.4f}")
+    print(f"Media vicini normalizzata (Mode): {media_vicini_mode:.4f} | Media altri normalizzata(Mode):  {media_altri_mode:.4f}")
+
+
+
     print(f"Media della distanza tra prima e seconda classe più alta: {mean_distance:.4f}")
-
-
-
-
-def calculate_performance_metrics(true_label, label_estimate_mean, label_estimate_mode):
-
-    # Metti a 0 se i valori nei vettori label_estimate_mean e label_estimate_mode sono tra 0 e 0.05
-    label_estimate_mean = np.where((label_estimate_mean > 0) & (label_estimate_mean < 0.05), 0, label_estimate_mean)
-    label_estimate_mode = np.where((label_estimate_mode > 0) & (label_estimate_mode < 0.05), 0, label_estimate_mode)
-
-    # MAE e MSE
-    mae_mean = np.mean(np.abs(label_estimate_mean - true_label))
-    mse_mean = np.mean((label_estimate_mean - true_label) ** 2)
-    mae_mode = np.mean(np.abs(label_estimate_mode - true_label))
-    mse_mode = np.mean((label_estimate_mode - true_label) ** 2)
-
-    # R²
-    ss_total = np.sum((true_label - np.mean(true_label)) ** 2)
-    ss_residual_mean = np.sum((true_label - label_estimate_mean) ** 2)
-    ss_residual_mode = np.sum((true_label - label_estimate_mode) ** 2)
-    r_squared_mean = 1 - (ss_residual_mean / ss_total)
-    r_squared_mode = 1 - (ss_residual_mode / ss_total)
-
-    # RMSE
-    rmse_mean = np.sqrt(mse_mean)
-    rmse_mode = np.sqrt(mse_mode)
-
-    # SMAPE
-    smape_mean = 100 * np.mean(2 * np.abs(label_estimate_mean - true_label) / (np.abs(label_estimate_mean) + np.abs(true_label)))
-    smape_mode = 100 * np.mean(2 * np.abs(label_estimate_mode - true_label) / (np.abs(label_estimate_mode) + np.abs(true_label)))
-
-    # NRMSE
-    nrmse_mean = rmse_mean / (np.max(true_label) - np.min(true_label))
-    nrmse_mode = rmse_mode / (np.max(true_label) - np.min(true_label))
-
-    # Cosine Similarity
-    def cosine_similarity(y_true, y_pred):
-        dot_product = np.sum(y_true * y_pred)
-        norm_true = np.linalg.norm(y_true)
-        norm_pred = np.linalg.norm(y_pred)
-        return dot_product / (norm_true * norm_pred)
-    
-    cosine_sim_mean = cosine_similarity(true_label, label_estimate_mean)
-    cosine_sim_mode = cosine_similarity(true_label, label_estimate_mode)
-
-    # Explained Variance
-    def explained_variance(y_true, y_pred):
-        var_residual = np.var(y_true - y_pred)
-        var_true = np.var(y_true)
-        return 1 - (var_residual / var_true)
-
-    explained_variance_mean = explained_variance(true_label, label_estimate_mean)
-    explained_variance_mode = explained_variance(true_label, label_estimate_mode)
-
-    # Crea un dizionario con tutti i risultati
-    metrics = {
-        "mae_mean": mae_mean,
-        "mse_mean": mse_mean,
-        "rmse_mean": rmse_mean,
-        "r_squared_mean": r_squared_mean,
-        "smape_mean": smape_mean,
-        "nrmse_mean": nrmse_mean,
-        "cosine_sim_mean": cosine_sim_mean,
-        "explained_variance_mean": explained_variance_mean,
-        "mae_mode": mae_mode,
-        "mse_mode": mse_mode,
-        "rmse_mode": rmse_mode,
-        "r_squared_mode": r_squared_mode,
-        "smape_mode": smape_mode,
-        "nrmse_mode": nrmse_mode,
-        "cosine_sim_mode": cosine_sim_mode,
-        "explained_variance_mode": explained_variance_mode,
-    }
-
-    return metrics
-
-
-
-def calculate_hpdi(samples, alpha=0.05):
-
-    # Numero di campioni
-    n_samples = samples.shape[0]
-    
-    # Percentuale da includere nell'HPDI (es. 95% -> include 95% dei campioni)
-    credible_mass = 1.0 - alpha
-    
-    # HPDI per ciascuna dimensione
-    hpdi = np.zeros((2, samples.shape[1]))
-    
-    # Calcola l'HPDI per ogni dimensione del vettore di label
-    for dim in range(samples.shape[1]):
-        # Ordina i campioni per quella dimensione
-        sorted_samples = np.sort(samples[:, dim])
-        
-        # Numero di campioni da includere nell'HPDI
-        interval_idx_inc = int(np.floor(credible_mass * n_samples))
-        
-        # Trova l'ampiezza minima dell'intervallo
-        interval_width = sorted_samples[interval_idx_inc:] - sorted_samples[:n_samples - interval_idx_inc]
-        
-        # Trova l'indice dell'intervallo più stretto
-        min_idx = np.argmin(interval_width)
-        
-        # Assegna i limiti inferiore e superiore dell'HPDI
-        hpdi[0, dim] = sorted_samples[min_idx]
-        hpdi[1, dim] = sorted_samples[min_idx + interval_idx_inc]
-    
-    return hpdi
-
-
-
-
-
-
-def calcola_media_parametri(csv_file_name):
-    # Carica il file CSV in un DataFrame
-    df = pd.read_csv(csv_file_name)
-    
-    def converti_vettore(valore):
-        """Converte una stringa in un vettore (lista di float), se possibile."""
-        try:
-            # Rimuove gli spazi e converte la stringa in lista di float
-            return [float(x) for x in valore.split(',')]
-        except:
-            # Se non è un vettore (stringa singola), ritorna il valore originale
-            return valore
-    
-    # Applica la conversione dei vettori per tutte le colonne
-    df = df.applymap(lambda x: converti_vettore(x) if isinstance(x, str) else x)
-    
-    # Identifica le colonne da escludere
-    colonne_da_escludere = ['Index', 'True Label', 'Mean Estimate', 'Mode Estimate']
-    
-    # Filtra le colonne del DataFrame per escludere quelle specificate
-    df_filtrato = df.drop(columns=colonne_da_escludere, errors='ignore')
-
-    # Identifica le colonne che contengono vettori e non valori singoli
-    colonne_vettoriali = df_filtrato.apply(lambda col: col.apply(lambda x: isinstance(x, list)).all())
-    
-    # Calcola la media dei vettori
-    medie = {}
-    for colonna, is_vettoriale in colonne_vettoriali.items():
-        if is_vettoriale:
-            # Se è una colonna di vettori, convertila in array numpy
-            array_vettori = np.array(df_filtrato[colonna].tolist())
-            # Calcola la media elemento per elemento
-            medie[colonna] = np.mean(array_vettori, axis=0)
-        else:
-            # Se è una colonna di valori singoli, calcola la media normalmente
-            medie[colonna] = df_filtrato[colonna].mean()
-
-    # Convertire le medie in un DataFrame per una migliore visualizzazione
-    df_medie = pd.DataFrame(medie.items(), columns=['Parametro', 'Media'])
-    
-    # Formattare i risultati per una visualizzazione più bella
-    df_medie['Media'] = df_medie['Media'].apply(
-        lambda x: f"{x:.4f}" if isinstance(x, float) else ', '.join(f"{v:.4f}" for v in x)
-    )
-
-    # Stampare i risultati
-    print("\nRisultati delle Medie:")
-    print(df_medie.to_string(index=False))
-
-    return df_medie
 
 
 
@@ -1050,7 +1088,7 @@ n_iter = 20000
 csv_file_name = 'mcmc_results_sampled_5.csv'
 
 # Numero di iterazioni
-num_iterations = 10
+num_iterations = 0
 
 for i in range(num_iterations):
 
@@ -1114,9 +1152,9 @@ print(f"Risultati salvati nel file {csv_file_name} dopo {num_iterations} iterazi
 
 
 # Esegui la funzione con il file CSV contenente i risultati
-# csv_file_name = 'mcmc_results_sampled_2.csv'
-# create_confusion_matrix(csv_file_name)
-# analyze_damage_levels(csv_file_name)
+csv_file_name = 'mcmc_results_sampled_5.csv'
+create_confusion_matrix(csv_file_name)
+analyze_damage_levels(csv_file_name)
 
 # update_performance_metrics_from_file('mcmc_results.csv', 'mcmc_results_1.csv')
 

@@ -20,25 +20,26 @@ import scipy.stats as st
 
 
 # Specify the example you are dealing with
-esempio = 'L_FRAME_DT'
+esempio = 'TRAIN_FRAME_DT'
 # Training and Testing data
-ID              = '7_1'
-save_ID         = 'Classifier_total_7_1/'
-path            = "../" + esempio + '/Dati/'
-path_data_train   = path + 'istantrain_' + ID
-path_data_test   = path + 'istantest_' + ID
+ID              = '2_1'
+save_ID         = '/Classifier_total_2_1/'
+path            = "../" + esempio 
+path_data_train   = path + '/istantrain_' + ID
+path_data_test   = path + '/istantest_' + ID
 # Saving model
 path_save       = "models/"
 # Prediction model
-restore_ID= 'Classifier_total_7_1/'
+restore_ID = '/Classifier_total_2_1/'
 path_restore = path + restore_ID
 
 path_z = "output_VAE_for_MCMC"
 
 # Which dof monitored
-which_channels = [1,2,3,4,5,6,7,8]
+which_channels = [1,2,3,4,5,6,7,8,9,10]
 
-n_channels = 8
+n_channels = 10
+seq_len = 600
 # Specify if you are using accelerations =1 or displacements =0
 accelerations = 0
 
@@ -80,7 +81,7 @@ def read_data(path_data, train):
 
 
     # Creazione dei vettori di label di 7 elementi
-    labels_vector = np.zeros((N_ist, 7))  # Vettore di etichette a 7 classi
+    labels_vector = np.zeros((N_ist, 6))  # Vettore di etichette a 7 classi
     
     for i, idx in enumerate(valid_indices):
         # Inserisci il damage_level nella posizione corretta in base alla classe di danno
@@ -103,7 +104,7 @@ output_dim = 256  # Opzioni 256, 512, 1024
 reg = 0.01
 
 # Number of classes in the dataset
-n_class = 7   #Ho solo dati di damage_class > 0
+n_class = 6   #Ho solo dati di damage_class > 0
 
 
 # Hyperparameters
@@ -127,61 +128,6 @@ rate_drop = 0.05
 
 
 
-# Struttura senza Dropout  
-# def Coupling(input_shape=latent_dim, num_classes=n_class):
-#     # Input per il vettore latente Z di dimensione 4
-#     input_z = layers.Input(shape=(latent_dim,), name='Input_Z')
-#     # Input per il vettore di label condizionale di dimensione num_classes
-#     input_l = layers.Input(shape=(num_classes,), name='Input_Label')
-    
-#     # Network per condizionare s e t in funzione del label y
-#     # Uso un piccolo MLP per una rappresentazione più complessa dell'embedding delle classi
-#     label_condition = layers.Dense(32, activation='relu')(input_l)
-#     label_condition = layers.Dense(64, activation='relu')(label_condition)
-#     label_embedding = layers.Dense(128, activation='relu')(label_condition) 
-
-
-#     # Livelli densi per la componente t (traslazione) con condizionamento MLP
-#     t = layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(reg))(input_z)
-#     t_embedding = layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
-#     t = layers.Concatenate()([t, t_embedding])  # Condizionamento con il label embedding
-#     t = layers.Dense(latent_dim, activation="linear", kernel_regularizer=regularizers.l2(reg))(t)
-
-#     # Livelli densi per la componente s (scalatura) con condizionamento MLP
-#     s = layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(reg))(input_z)
-#     s_embedding = layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
-#     s = layers.Concatenate()([s, s_embedding])  # Condizionamento con il label embedding
-#     s = layers.Dense(latent_dim, activation="tanh", kernel_regularizer=regularizers.l2(reg))(s)
-
-#     return keras.Model(inputs=[input_z, input_l], outputs=[s, t])
-
-
-# def Coupling(input_shape=latent_dim, num_classes=n_class, reg=0.01, dropout_rate=0.3):
-#     # Input per il vettore latente Z di dimensione 4
-#     input_z = layers.Input(shape=(latent_dim,), name='Input_Z')
-#     # Input per il vettore di label condizionale di dimensione num_classes
-#     input_l = layers.Input(shape=(num_classes,), name='Input_Label')
-
-#     # Network per condizionare s e t in funzione del label y
-#     label_condition = layers.Dense(32, activation='relu')(input_l)
-#     label_condition = layers.Dense(64, activation='relu')(label_condition)
-#     label_embedding = layers.Dense(128, activation='relu')(label_condition) 
-
-#     # Livelli densi per la componente t (traslazione) con condizionamento MLP
-#     t = layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(reg))(input_z)
-#     t = layers.Dropout(dropout_rate)(t)  # Aggiungi Dropout
-#     t_embedding = layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
-#     t = layers.Concatenate()([t, t_embedding])  # Condizionamento con il label embedding
-#     t = layers.Dense(latent_dim, activation="linear", kernel_regularizer=regularizers.l2(reg))(t)
-
-#     # Livelli densi per la componente s (scalatura) con condizionamento MLP
-#     s = layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(reg))(input_z)
-#     s = layers.Dropout(dropout_rate)(s)  # Aggiungi Dropout
-#     s_embedding = layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
-#     s = layers.Concatenate()([s, s_embedding])  # Condizionamento con il label embedding
-#     s = layers.Dense(latent_dim, activation="tanh", kernel_regularizer=regularizers.l2(reg))(s)
-
-#     return keras.Model(inputs=[input_z, input_l], outputs=[s, t])
 
 
 def Coupling(input_shape=latent_dim, num_classes=n_class, reg=0.005, dropout_rate=0.1):
@@ -626,7 +572,7 @@ else:
 
 
 
-    labels_train_truncated = labels_train[:3500,:]
+    labels_train_truncated = labels_train[:3429,:]
 
     log_likelihood_test = NVP.predict(Z_test, labels_test)
     log_likelihood_wrong = NVP.predict(Z_test, labels_train_truncated)

@@ -618,6 +618,9 @@ def create_confusion_matrix(csv_file):
 
     # Aggiungi spazi tra le figure
     plt.tight_layout()
+
+    # Salva il grafico in un file immagine
+    plt.savefig("output_MCMC_NVP_2/Conf_Matrix_MCMC")
     plt.show()
 
 
