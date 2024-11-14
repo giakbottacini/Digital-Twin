@@ -646,20 +646,19 @@ else:
 
     # Istogramma del vettore log_likelihood_train
     plt.hist(log_likelihood_wrong_np, bins=100, range=(2*min(log_likelihood_test_np), 2*max(log_likelihood_test_np)),
-            alpha=0.9, color='b', label='Wrong')
+            alpha=0.9, color='r', label='Wrong')
 
     # Istogramma del vettore log_likelihood_test
     plt.hist(log_likelihood_test_np, bins=100, range=(2*min(log_likelihood_test_np), 2*max(log_likelihood_test_np)),
-            alpha=0.8, color='r', label='Right')
+            alpha=0.8, color='b', label='Right')
 
     # Titolo e etichette
-    plt.title('Istogramma sovrapposto delle log-likelihood')
-    plt.xlabel('log-likelihood')
-    plt.ylabel('Frequenza normalizzata')
+    plt.xlabel('Log-likelihood', fontsize=20)
+    plt.ylabel('Frequency', fontsize=20)
     plt.grid(True)
 
     # Aggiungi una legenda
-    plt.legend()
+    plt.legend(fontsize=18)
 
     # Salva il grafico in un file immagine
     plt.savefig(os.path.join(output_dir, "hist_confronto_2.png"))

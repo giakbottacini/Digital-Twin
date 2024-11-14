@@ -734,6 +734,127 @@ def calcola_medie_normalizzate_dataset(vettori):
 
 
 
+# def analyze_damage_levels(csv_file_name):
+#     # Carica i dati dal file CSV
+#     df = pd.read_csv(csv_file_name)
+    
+#     # Estrai le colonne necessarie
+#     true_labels = df['True Label'].apply(lambda x: np.fromstring(x, sep=',')).to_list()
+#     mean_labels = df['Mean Estimate'].apply(lambda x: np.fromstring(x, sep=',')).to_list()
+#     mode_labels = df['Mode Estimate'].apply(lambda x: np.fromstring(x, sep=',')).to_list()
+
+#     # Converti in array NumPy per un'elaborazione più semplice
+#     true_labels = np.array(true_labels)
+#     mean_labels = np.array(mean_labels)
+#     mode_labels = np.array(mode_labels)
+
+#     # Funzione per estrarre il livello di danno dalla classe giusta
+#     def get_damage_level(label):
+#         # Trova l'indice dove c'è il livello di danno non nullo (classe con danno massimo)
+#         damage_index = np.argmax(label)
+#         return label[damage_index], damage_index  # Restituisci il livello di danno e l'indice della classe
+
+#     # Funzione per trovare la seconda classe con il livello di danno più alto
+#     def get_second_highest_class(label):
+#         sorted_indices = np.argsort(label)  # Ordina gli indici in base ai valori crescenti
+#         second_highest_index = sorted_indices[-2]  # Il secondo più alto è il penultimo nell'array ordinato
+#         return second_highest_index
+
+#     # Analizza i livelli di danno
+#     true_damage_levels = np.array([get_damage_level(label)[0] for label in true_labels])  # Ottieni i livelli di danno reali
+#     true_classes = np.array([get_damage_level(label)[1] for label in true_labels])  # Ottieni le classi reali
+
+#     predicted_damage_levels_mean = np.array([mean_labels[i][true_classes[i]] for i in range(len(mean_labels))])
+#     predicted_damage_levels_mode = np.array([mode_labels[i][true_classes[i]] for i in range(len(mode_labels))])
+
+#     # Calcola MAE (Errore Assoluto Medio)
+#     mae_mean = np.mean(np.abs(predicted_damage_levels_mean - true_damage_levels))
+#     mae_mode = np.mean(np.abs(predicted_damage_levels_mode - true_damage_levels))
+
+#     # Calcola l'errore relativo rispetto al livello di danno reale (variazione proporzionale)
+#     relative_error_mean = np.mean(np.abs(predicted_damage_levels_mean - true_damage_levels) / (true_damage_levels+0.25))
+#     relative_error_mode = np.mean(np.abs(predicted_damage_levels_mode - true_damage_levels) / (true_damage_levels+0.25))
+
+#     # Calcola la distanza tra la classe con il danno massimo e la seconda classe più alta
+#     distances = []
+#     for label in true_labels:
+#         damage_index = get_damage_level(label)[1]
+#         second_highest_index = get_second_highest_class(label)
+#         distance = abs(damage_index - second_highest_index)  # Distanza tra la prima e la seconda classe
+#         distances.append(distance)
+    
+#     mean_distance = np.mean(distances)  # Media delle distanze
+
+#     # Converti le colonne 'True Label', 'Mean Estimate' e 'Mode Estimate' da stringhe a array di float
+#     df['True Label'] = df['True Label'].apply(lambda x: np.array(list(map(float, x.split(',')))))
+#     df['Mean Estimate'] = df['Mean Estimate'].apply(lambda x: np.array(list(map(float, x.split(',')))))
+#     df['Mode Estimate'] = df['Mode Estimate'].apply(lambda x: np.array(list(map(float, x.split(',')))))
+
+#     # Ottieni le classi vere e quelle stimate (media e moda)
+#     true_classes = df['True Label'].apply(get_predicted_class).values +1 
+#     mean_predicted_classes = df['Mean Estimate'].apply(get_predicted_class).values +1
+#     mode_predicted_classes = df['Mode Estimate'].apply(get_predicted_class).values +1
+
+#     # Calcola metriche per predizioni con media
+#     accuracy_mean = accuracy_score(true_classes, mean_predicted_classes)
+#     precision_mean = precision_score(true_classes, mean_predicted_classes, average='weighted')
+#     recall_mean = recall_score(true_classes, mean_predicted_classes, average='weighted')
+#     f1_mean = f1_score(true_classes, mean_predicted_classes, average='weighted')
+#     conf_matrix_mean = confusion_matrix(true_classes, mean_predicted_classes)
+
+#     # Calcola metriche per predizioni con moda
+#     accuracy_mode = accuracy_score(true_classes, mode_predicted_classes)
+#     precision_mode = precision_score(true_classes, mode_predicted_classes, average='weighted')
+#     recall_mode = recall_score(true_classes, mode_predicted_classes, average='weighted')
+#     f1_mode = f1_score(true_classes, mode_predicted_classes, average='weighted')
+#     conf_matrix_mode = confusion_matrix(true_classes, mode_predicted_classes)
+
+#     # Cosine Similarity
+#     cosine_sim_mean = cosine_similarity_media(true_labels, mean_labels)
+#     cosine_sim_mode = cosine_similarity_media(true_labels, mode_labels)
+
+#     # RMSE, SMAPE, NRMSE
+#     rmse_mean_avg, rmse_mode_avg, smape_mean_avg, smape_mode_avg, nrmse_mean_avg, nrmse_mode_avg = calculate_metrics_mean(true_labels, mean_labels, mode_labels)
+
+#     # Confronto vicini e lontani
+#     media_vicini_mean, media_altri_mean = calcola_medie_normalizzate_dataset(mean_labels)
+#     media_vicini_mode, media_altri_mode = calcola_medie_normalizzate_dataset(mode_labels)
+
+
+#     # Stampa dei risultati
+#     print(f"Errore Assoluto Medio (Media): {mae_mean:.4f}")
+#     print(f"Errore Assoluto Medio (Moda): {mae_mode:.4f}")
+#     print(f"Errore Relativo Medio (Media): {relative_error_mean:.4f}")
+#     print(f"Errore Relativo Medio (Moda): {relative_error_mode:.4f}")
+
+#     print(f"Accuracy Medio (Media): {accuracy_mean:.4f}")
+#     print(f"Precision Medio (Media): {precision_mean:.4f}")
+#     print(f"Recall Medio (Media): {recall_mean:.4f}")
+#     print(f"F1 Medio (Media): {f1_mean:.4f}")
+
+#     print(f"Accuracy Medio (Moda): {accuracy_mode:.4f}")
+#     print(f"Precision Medio (Moda): {precision_mode:.4f}")
+#     print(f"Recall Medio (Moda): {recall_mode:.4f}")
+#     print(f"F1 Medio (Moda): {f1_mode:.4f}")
+
+#     print(f"Cosine Similarity Medio (Media): {cosine_sim_mean:.4f}")
+#     print(f"Cosine Similarity Medio (Moda): {cosine_sim_mode:.4f}")
+
+#     print(f"RMSE Medio (Media): {rmse_mean_avg:.4f}")
+#     print(f"RMSE Medio (Moda): {rmse_mode_avg:.4f}")
+#     # print(f"SMAPE Medio (Media): {smape_mean_avg:.4f}")
+#     # print(f"SMAPE Medio (Moda): {smape_mode_avg:.4f}")
+#     print(f"NRMSE Medio (Media): {nrmse_mean_avg:.4f}")
+#     print(f"NRMSE Medio (Moda): {nrmse_mode_avg:.4f}")
+
+#     print(f"Media vicini normalizzata (Mean): {media_vicini_mean:.4f} | Media altri normalizzata(Mean):  {media_altri_mean:.4f}")
+#     print(f"Media vicini normalizzata (Mode): {media_vicini_mode:.4f} | Media altri normalizzata(Mode):  {media_altri_mode:.4f}")
+
+
+#     print(f"Media della distanza tra prima e seconda classe più alta: {mean_distance:.4f}")
+
+
+
 def analyze_damage_levels(csv_file_name):
     # Carica i dati dal file CSV
     df = pd.read_csv(csv_file_name)
@@ -742,84 +863,60 @@ def analyze_damage_levels(csv_file_name):
     true_labels = df['True Label'].apply(lambda x: np.fromstring(x, sep=',')).to_list()
     mean_labels = df['Mean Estimate'].apply(lambda x: np.fromstring(x, sep=',')).to_list()
     mode_labels = df['Mode Estimate'].apply(lambda x: np.fromstring(x, sep=',')).to_list()
+    std_devs = df['Standard Deviation'].apply(lambda x: np.fromstring(x, sep=',')).to_list()
 
     # Converti in array NumPy per un'elaborazione più semplice
     true_labels = np.array(true_labels)
     mean_labels = np.array(mean_labels)
     mode_labels = np.array(mode_labels)
+    std_devs = np.array(std_devs)
 
     # Funzione per estrarre il livello di danno dalla classe giusta
     def get_damage_level(label):
-        # Trova l'indice dove c'è il livello di danno non nullo (classe con danno massimo)
-        damage_index = np.argmax(label)
-        return label[damage_index], damage_index  # Restituisci il livello di danno e l'indice della classe
-
-    # Funzione per trovare la seconda classe con il livello di danno più alto
-    def get_second_highest_class(label):
-        sorted_indices = np.argsort(label)  # Ordina gli indici in base ai valori crescenti
-        second_highest_index = sorted_indices[-2]  # Il secondo più alto è il penultimo nell'array ordinato
-        return second_highest_index
+        damage_index = np.argmax(label)  # Indice della classe con danno massimo
+        return label[damage_index], damage_index
 
     # Analizza i livelli di danno
-    true_damage_levels = np.array([get_damage_level(label)[0] for label in true_labels])  # Ottieni i livelli di danno reali
-    true_classes = np.array([get_damage_level(label)[1] for label in true_labels])  # Ottieni le classi reali
+    true_damage_levels = np.array([get_damage_level(label)[0] for label in true_labels])  # Livelli di danno reali
+    true_classes = np.array([get_damage_level(label)[1] for label in true_labels])  # Classi reali
 
     predicted_damage_levels_mean = np.array([mean_labels[i][true_classes[i]] for i in range(len(mean_labels))])
     predicted_damage_levels_mode = np.array([mode_labels[i][true_classes[i]] for i in range(len(mode_labels))])
 
-    # Calcola MAE (Errore Assoluto Medio)
+    # Calcola MAE
     mae_mean = np.mean(np.abs(predicted_damage_levels_mean - true_damage_levels))
     mae_mode = np.mean(np.abs(predicted_damage_levels_mode - true_damage_levels))
 
-    # Calcola l'errore relativo rispetto al livello di danno reale (variazione proporzionale)
-    relative_error_mean = np.mean(np.abs(predicted_damage_levels_mean - true_damage_levels) / (true_damage_levels+0.25))
-    relative_error_mode = np.mean(np.abs(predicted_damage_levels_mode - true_damage_levels) / (true_damage_levels+0.25))
+    # Errore relativo
+    relative_error_mean = np.mean(np.abs(predicted_damage_levels_mean - true_damage_levels) / (true_damage_levels + 0.25))
+    relative_error_mode = np.mean(np.abs(predicted_damage_levels_mode - true_damage_levels) / (true_damage_levels + 0.25))
 
-    # Calcola la distanza tra la classe con il danno massimo e la seconda classe più alta
-    distances = []
-    for label in true_labels:
-        damage_index = get_damage_level(label)[1]
-        second_highest_index = get_second_highest_class(label)
-        distance = abs(damage_index - second_highest_index)  # Distanza tra la prima e la seconda classe
-        distances.append(distance)
-    
-    mean_distance = np.mean(distances)  # Media delle distanze
-
-    # Converti le colonne 'True Label', 'Mean Estimate' e 'Mode Estimate' da stringhe a array di float
-    df['True Label'] = df['True Label'].apply(lambda x: np.array(list(map(float, x.split(',')))))
-    df['Mean Estimate'] = df['Mean Estimate'].apply(lambda x: np.array(list(map(float, x.split(',')))))
-    df['Mode Estimate'] = df['Mode Estimate'].apply(lambda x: np.array(list(map(float, x.split(',')))))
-
-    # Ottieni le classi vere e quelle stimate (media e moda)
-    true_classes = df['True Label'].apply(get_predicted_class).values +1 
-    mean_predicted_classes = df['Mean Estimate'].apply(get_predicted_class).values +1
-    mode_predicted_classes = df['Mode Estimate'].apply(get_predicted_class).values +1
-
-    # Calcola metriche per predizioni con media
-    accuracy_mean = accuracy_score(true_classes, mean_predicted_classes)
-    precision_mean = precision_score(true_classes, mean_predicted_classes, average='weighted')
-    recall_mean = recall_score(true_classes, mean_predicted_classes, average='weighted')
-    f1_mean = f1_score(true_classes, mean_predicted_classes, average='weighted')
-    conf_matrix_mean = confusion_matrix(true_classes, mean_predicted_classes)
-
-    # Calcola metriche per predizioni con moda
-    accuracy_mode = accuracy_score(true_classes, mode_predicted_classes)
-    precision_mode = precision_score(true_classes, mode_predicted_classes, average='weighted')
-    recall_mode = recall_score(true_classes, mode_predicted_classes, average='weighted')
-    f1_mode = f1_score(true_classes, mode_predicted_classes, average='weighted')
-    conf_matrix_mode = confusion_matrix(true_classes, mode_predicted_classes)
-
-    # Cosine Similarity
-    cosine_sim_mean = cosine_similarity_media(true_labels, mean_labels)
-    cosine_sim_mode = cosine_similarity_media(true_labels, mode_labels)
-
-    # RMSE, SMAPE, NRMSE
-    rmse_mean_avg, rmse_mode_avg, smape_mean_avg, smape_mode_avg, nrmse_mean_avg, nrmse_mode_avg = calculate_metrics_mean(true_labels, mean_labels, mode_labels)
-
-    # Confronto vicini e lontani
     media_vicini_mean, media_altri_mean = calcola_medie_normalizzate_dataset(mean_labels)
     media_vicini_mode, media_altri_mode = calcola_medie_normalizzate_dataset(mode_labels)
 
+    # Calcola metriche per predizioni con media
+    true_classes_adjusted = true_classes + 1  # Per correggere la numerazione se necessario
+    mean_predicted_classes = np.array([np.argmax(mean_label) + 1 for mean_label in mean_labels])
+    mode_predicted_classes = np.array([np.argmax(mode_label) + 1 for mode_label in mode_labels])
+
+    accuracy_mean = accuracy_score(true_classes_adjusted, mean_predicted_classes)
+    precision_mean = precision_score(true_classes_adjusted, mean_predicted_classes, average='weighted')
+    recall_mean = recall_score(true_classes_adjusted, mean_predicted_classes, average='weighted')
+    f1_mean = f1_score(true_classes_adjusted, mean_predicted_classes, average='weighted')
+
+    accuracy_mode = accuracy_score(true_classes_adjusted, mode_predicted_classes)
+    precision_mode = precision_score(true_classes_adjusted, mode_predicted_classes, average='weighted')
+    recall_mode = recall_score(true_classes_adjusted, mode_predicted_classes, average='weighted')
+    f1_mode = f1_score(true_classes_adjusted, mode_predicted_classes, average='weighted')
+
+    # Calcolo vettore deviazione standard media per ogni componente
+    mean_std_devs_per_component = np.mean(std_devs, axis=0)
+
+    # Calcolo deviazione standard media per ogni "True Label" distinto
+    unique_true_classes = np.unique(true_classes)
+    mean_std_dev_per_class = {
+        label: np.mean(std_devs[true_classes == label]) for label in unique_true_classes
+    }
 
     # Stampa dei risultati
     print(f"Errore Assoluto Medio (Media): {mae_mean:.4f}")
@@ -837,22 +934,21 @@ def analyze_damage_levels(csv_file_name):
     print(f"Recall Medio (Moda): {recall_mode:.4f}")
     print(f"F1 Medio (Moda): {f1_mode:.4f}")
 
-    print(f"Cosine Similarity Medio (Media): {cosine_sim_mean:.4f}")
-    print(f"Cosine Similarity Medio (Moda): {cosine_sim_mode:.4f}")
-
-    print(f"RMSE Medio (Media): {rmse_mean_avg:.4f}")
-    print(f"RMSE Medio (Moda): {rmse_mode_avg:.4f}")
-    # print(f"SMAPE Medio (Media): {smape_mean_avg:.4f}")
-    # print(f"SMAPE Medio (Moda): {smape_mode_avg:.4f}")
-    print(f"NRMSE Medio (Media): {nrmse_mean_avg:.4f}")
-    print(f"NRMSE Medio (Moda): {nrmse_mode_avg:.4f}")
-
     print(f"Media vicini normalizzata (Mean): {media_vicini_mean:.4f} | Media altri normalizzata(Mean):  {media_altri_mean:.4f}")
     print(f"Media vicini normalizzata (Mode): {media_vicini_mode:.4f} | Media altri normalizzata(Mode):  {media_altri_mode:.4f}")
 
+    print("\nDeviazione standard media per ogni componente:")
+    print(mean_std_devs_per_component)
+
+    print("\nDeviazione standard media per ciascun 'True Label' distinto:")
+    for label, mean_std in mean_std_dev_per_class.items():
+        print(f"True Label {label}: Media deviazione standard = {mean_std:.4f}")
 
 
-    print(f"Media della distanza tra prima e seconda classe più alta: {mean_distance:.4f}")
+
+
+
+
 
 
 

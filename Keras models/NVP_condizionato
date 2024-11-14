@@ -699,10 +699,10 @@ else:
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 14))
 
     # Plot della matrice di confusione
-    sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues', ax=ax1)
+    sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues', ax=ax1, annot_kws={"size": 14})
     ax1.set_title('Confusion Matrix')
-    ax1.set_xlabel('Predicted Label')
-    ax1.set_ylabel('True Label')
+    ax1.set_xlabel('Predicted Label',fontsize=18)
+    ax1.set_ylabel('True Label',fontsize=18)
 
     # Aggiungi le metriche di classificazione come testo nella seconda sotto-figura
     metrics_text = (
@@ -728,11 +728,11 @@ else:
     ## Analisi ulteriori
     """ 
 
-    X_test_2, labels_test_2, N_ist_test_2 = read_data(path_data_test, 20)
+    # X_test_2, labels_test_2, N_ist_test_2 = read_data(path_data_test, 20)
     # test_dataset_2 = tf.data.Dataset.from_tensor_slices((X_test_2, labels_test_2))
     # test_dataset_2 = test_dataset_2.batch(batch_size)
 
-    X_test_3, labels_test_3, N_ist_test_3 = read_data(path_data_test, 20)
+    # X_test_3, labels_test_3, N_ist_test_3 = read_data(path_data_test, 20)
     # test_dataset_3 = tf.data.Dataset.from_tensor_slices((X_test_3, labels_test_3))
     # test_dataset_3 = test_dataset_3.batch(batch_size)
 
@@ -740,7 +740,7 @@ else:
 
     # plot_variances_by_class(NVP, X_test, X_test_2, X_test_3)
 
-    plot_class_transition_heatmap(NVP, X_test, X_test_2)
+    # plot_class_transition_heatmap(NVP, X_test, X_test_2)
 
 
 

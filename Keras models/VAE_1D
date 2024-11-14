@@ -474,51 +474,51 @@ def plot_label_clusters_3d(vae, data, labels):
         return
     
 
-    # Plot using nothing
-    fig = plt.figure(figsize=(12, 10))
-    ax = fig.add_subplot(111, projection='3d')
-    scatter = ax.scatter(z_mean[:, 0], z_mean[:, 1], z_mean[:, 2], c=labels, cmap='viridis')
-    color_bar = fig.colorbar(scatter, ax=ax)
-    color_bar.set_label('Classi')
-    ax.set_xlabel("z_mean[0]")
-    ax.set_ylabel("z_mean[1]")
-    ax.set_zlabel("z_mean[2]")
-    plt.suptitle(f'Grouped by damage class in 3D latent space', fontsize=16)
-    plt.savefig(os.path.join(output_dir, "label_clusters_3d.png"))
-    plt.show()
+    # # Plot using nothing
+    # fig = plt.figure(figsize=(12, 10))
+    # ax = fig.add_subplot(111, projection='3d')
+    # scatter = ax.scatter(z_mean[:, 0], z_mean[:, 1], z_mean[:, 2], c=labels, cmap='viridis')
+    # color_bar = fig.colorbar(scatter, ax=ax)
+    # color_bar.set_label('Classi')
+    # ax.set_xlabel("z_mean[0]")
+    # ax.set_ylabel("z_mean[1]")
+    # ax.set_zlabel("z_mean[2]")
+    # plt.suptitle(f'Grouped by damage class in 3D latent space', fontsize=16)
+    # plt.savefig(os.path.join(output_dir, "label_clusters_3d.png"))
+    # plt.show()
 
 
-    # Plot using MDS
-    mds = MDS(n_components=3)
-    z_mds = mds.fit_transform(z_mean)
+    # # Plot using MDS
+    # mds = MDS(n_components=3)
+    # z_mds = mds.fit_transform(z_mean)
 
-    fig = plt.figure(figsize=(12, 10))
-    ax = fig.add_subplot(111, projection='3d')
-    scatter = ax.scatter(z_mds[:, 0], z_mds[:, 1], z_mds[:, 2], c=labels, cmap='viridis')
-    color_bar = fig.colorbar(scatter, ax=ax)
-    color_bar.set_label('Classi')
-    ax.set_xlabel("MDS[0]")
-    ax.set_ylabel("MDS[1]")
-    ax.set_zlabel("MDS[2]")
-    plt.suptitle(f'Grouped by damage class in 3D latent space using MDS', fontsize=16)
-    plt.savefig(os.path.join(output_dir, "label_clusters_mds_3d.png"))
-    plt.show()
+    # fig = plt.figure(figsize=(12, 10))
+    # ax = fig.add_subplot(111, projection='3d')
+    # scatter = ax.scatter(z_mds[:, 0], z_mds[:, 1], z_mds[:, 2], c=labels, cmap='viridis')
+    # color_bar = fig.colorbar(scatter, ax=ax)
+    # color_bar.set_label('Classi')
+    # ax.set_xlabel("MDS[0]")
+    # ax.set_ylabel("MDS[1]")
+    # ax.set_zlabel("MDS[2]")
+    # plt.suptitle(f'Grouped by damage class in 3D latent space using MDS', fontsize=16)
+    # plt.savefig(os.path.join(output_dir, "label_clusters_mds_3d.png"))
+    # plt.show()
 
-    # Plot using TSNE  (in teoria serve più che altro se hai input categoriale)
-    tsne = TSNE(n_components=3)
-    z_tsne = tsne.fit_transform(z_mean)
+    # # Plot using TSNE  (in teoria serve più che altro se hai input categoriale)
+    # tsne = TSNE(n_components=3)
+    # z_tsne = tsne.fit_transform(z_mean)
 
-    fig = plt.figure(figsize=(12, 10))
-    ax = fig.add_subplot(111, projection='3d')
-    scatter = ax.scatter(z_tsne[:, 0], z_tsne[:, 1], z_tsne[:, 2], c=labels, cmap='viridis')
-    color_bar = fig.colorbar(scatter, ax=ax)
-    color_bar.set_label('Classi')
-    ax.set_xlabel("TSNE[0]")
-    ax.set_ylabel("TSNE[1]")
-    ax.set_zlabel("TSNE[2]")
-    plt.suptitle(f'Grouped by damage class in 3D latent space using TSNE', fontsize=16)
-    plt.savefig(os.path.join(output_dir, "label_clusters_tsne_3d.png"))
-    plt.show()
+    # fig = plt.figure(figsize=(12, 10))
+    # ax = fig.add_subplot(111, projection='3d')
+    # scatter = ax.scatter(z_tsne[:, 0], z_tsne[:, 1], z_tsne[:, 2], c=labels, cmap='viridis')
+    # color_bar = fig.colorbar(scatter, ax=ax)
+    # color_bar.set_label('Classi')
+    # ax.set_xlabel("TSNE[0]")
+    # ax.set_ylabel("TSNE[1]")
+    # ax.set_zlabel("TSNE[2]")
+    # plt.suptitle(f'Grouped by damage class in 3D latent space using TSNE', fontsize=16)
+    # plt.savefig(os.path.join(output_dir, "label_clusters_tsne_3d.png"))
+    # plt.show()
 
     # Plot using PCA
     pca = PCA(n_components=3)
@@ -528,10 +528,10 @@ def plot_label_clusters_3d(vae, data, labels):
     ax = fig.add_subplot(111, projection='3d')
     scatter = ax.scatter(z_pca[:, 0], z_pca[:, 1], z_pca[:, 2], c=labels, cmap='viridis')
     color_bar = fig.colorbar(scatter, ax=ax)
-    color_bar.set_label('Classi')
-    ax.set_xlabel("PCA[0]")
-    ax.set_ylabel("PCA[1]")
-    ax.set_zlabel("PCA[2]")
+    color_bar.set_label('Classes', fontsize=16)
+    ax.set_xlabel("PCA[0]", fontsize=14)
+    ax.set_ylabel("PCA[1]", fontsize=14)
+    ax.set_zlabel("PCA[2]", fontsize=14)
     plt.suptitle(f'Grouped by damage class in 3D latent space using PCA', fontsize=16)
     plt.savefig(os.path.join(output_dir, "label_clusters_pca_3d.png"))
     plt.show()
@@ -690,7 +690,8 @@ def plot_class_transition_heatmap(vae, data1, data2):
     predicted_classes_2 = np.argmax(X_test_classified_2, axis=1)
 
     #Plot differenza di un signal random
-    idx = np.random.randint(0, X_test.shape[0])
+    # idx = np.random.randint(0, X_test.shape[0])
+    idx = 2677
     original_signal = data1[idx]
     reconstructed_signal = data2[idx]
 
@@ -700,16 +701,15 @@ def plot_class_transition_heatmap(vae, data1, data2):
     plt.figure(figsize=(10, 6))
 
     # Plot del segnale originale con trasparenza
-    plt.plot(original_signal.flatten(), label='Meno rumoroso', color='blue', alpha=0.5)
+    plt.plot(original_signal.flatten(), label='Signal SNR 100', color='blue', alpha=0.7)
 
     # Plot del segnale ricostruito con trasparenza
-    plt.plot(reconstructed_signal.flatten(), label='Più rumoroso', color='orange', alpha=0.5)
+    plt.plot(reconstructed_signal.flatten(), label='Signal SNR 50', color='orange', alpha=0.7)
 
     # Plot della differenza tra i due segnali (linea piena e nera)
-    plt.plot(difference_signal.flatten(), label='Differenza', color='black')
+    plt.plot(difference_signal.flatten(), label='Difference', color='black')
 
-    plt.legend()
-    plt.title(f"Segnale Meno Rumore vs Segnale Più Rumore - Esempio {idx}")
+    plt.legend(fontsize=14)
     plt.savefig('output_VAE_1D/signal_confront.png')
     plt.show()
 
@@ -721,9 +721,8 @@ def plot_class_transition_heatmap(vae, data1, data2):
     sns.heatmap(transition_matrix, annot=True, fmt='d', cmap='Blues', xticklabels=np.arange(n_class), yticklabels=np.arange(n_class))
     
     # Etichette e titolo
-    plt.title("Class Transition Matrix (Data1 vs Data2)", fontsize=16)
-    plt.xlabel("Predicted Class (Data2)", fontsize=12)
-    plt.ylabel("Predicted Class (Data1)", fontsize=12)
+    plt.xlabel("Predicted Class SNR 50", fontsize=14)
+    plt.ylabel("Predicted Class SNR 100", fontsize=14)
 
     # Salva la figura
     plt.savefig('output_VAE_1D/class_transition_heatmap.png')
@@ -1171,10 +1170,10 @@ else:
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 14))
 
     # Plot della matrice di confusione
-    sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues', ax=ax1)
+    sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues', ax=ax1, annot_kws={"size": 12})
     ax1.set_title('Confusion Matrix')
-    ax1.set_xlabel('Predicted Label')
-    ax1.set_ylabel('True Label')
+    ax1.set_xlabel('Predicted Label', fontsize=14)
+    ax1.set_ylabel('True Label', fontsize=14)
 
     # Aggiungi le metriche di classificazione come testo nella seconda sotto-figura
     metrics_text = (
@@ -1198,21 +1197,21 @@ else:
     """
     ## Analisi ulteriori
     """
-    X_test_2, labels_test_2, N_ist_test_2 = read_data_rumored(path_data_test, 20)
+    X_test_2, labels_test_2, N_ist_test_2 = read_data_rumored(path_data_test, 50)
     # test_dataset_2 = tf.data.Dataset.from_tensor_slices((X_test_2, labels_test_2))
     # test_dataset_2 = test_dataset_2.batch(batch_size)
 
-    X_test_3, labels_test_3, N_ist_test_3 = read_data_rumored(path_data_test, 5)
+    X_test_3, labels_test_3, N_ist_test_3 = read_data_rumored(path_data_test, 10)
     # test_dataset_3 = tf.data.Dataset.from_tensor_slices((X_test_3, labels_test_3))
     # test_dataset_3 = test_dataset_3.batch(batch_size)
 
     # plot_label_clusters_3d(vae, X_test, predicted_classes)   #Plotta il clustering rispetto al label classificato dei dati test nello spazio latente
 
-    # plot_class_transition_heatmap(vae, X_test, X_test_2)   #Plotta transition_map da X_test_2 a X_test_3
+    plot_class_transition_heatmap(vae, X_test, X_test_2)   #Plotta transition_map da X_test_2 a X_test_3
 
 
     # plot_variances_by_class(vae, X_test, X_test_2, X_test_3)  #Plotta densità variances per classe per i tre dataset
-    plot_means_by_class(vae, X_test, X_test_2, X_test_3)    #Plotta densità variances per classe per i tre dataset
+    # plot_means_by_class(vae, X_test, X_test_2, X_test_3)    #Plotta densità variances per classe per i tre dataset
 
     # df = variation_mean_and_var(vae, X_test_2, X_test_3)   #Restituisce file densità variances per classe per i due dataset
     

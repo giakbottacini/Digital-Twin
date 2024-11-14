@@ -413,7 +413,7 @@ def plot_label_clusters(vae, data, labels):
 
 
 
-def plot_label_clusters_3d(vae, data, labels):
+def plot_label_clusters_3d(vae, data, labels, levels):
     # display a 3D plot of the digit classes in the latent space
     z_mean, _, _ = vae.encoder.predict(data, verbose=0)
 
@@ -426,17 +426,17 @@ def plot_label_clusters_3d(vae, data, labels):
     
 
     # Plot using nothing
-    fig = plt.figure(figsize=(12, 10))
-    ax = fig.add_subplot(111, projection='3d')
-    scatter = ax.scatter(z_mean[:, 0], z_mean[:, 1], z_mean[:, 2], c=labels, cmap='viridis')
-    color_bar = fig.colorbar(scatter, ax=ax)
-    color_bar.set_label('Classi')
-    ax.set_xlabel("z_mean[0]")
-    ax.set_ylabel("z_mean[1]")
-    ax.set_zlabel("z_mean[2]")
-    plt.suptitle(f'Grouped by damage class in 3D latent space', fontsize=16)
-    plt.savefig(os.path.join(output_dir, "label_clusters_3d.png"))
-    plt.show()
+    # fig = plt.figure(figsize=(12, 10))
+    # ax = fig.add_subplot(111, projection='3d')
+    # scatter = ax.scatter(z_mean[:, 0], z_mean[:, 1], z_mean[:, 2], c=labels, cmap='viridis')
+    # color_bar = fig.colorbar(scatter, ax=ax)
+    # color_bar.set_label('Classi')
+    # ax.set_xlabel("z_mean[0]")
+    # ax.set_ylabel("z_mean[1]")
+    # ax.set_zlabel("z_mean[2]")
+    # plt.suptitle(f'Grouped by damage class in 3D latent space', fontsize=16)
+    # plt.savefig(os.path.join(output_dir, "label_clusters_3d.png"))
+    # plt.show()
 
 
     # # Plot using MDS
@@ -479,12 +479,43 @@ def plot_label_clusters_3d(vae, data, labels):
     ax = fig.add_subplot(111, projection='3d')
     scatter = ax.scatter(z_pca[:, 0], z_pca[:, 1], z_pca[:, 2], c=labels, cmap='viridis')
     color_bar = fig.colorbar(scatter, ax=ax)
-    color_bar.set_label('Classi')
-    ax.set_xlabel("PCA[0]")
-    ax.set_ylabel("PCA[1]")
-    ax.set_zlabel("PCA[2]")
+    color_bar.set_label('Classes', fontsize=20)
+    ax.set_xlabel("PCA[0]", fontsize=18)
+    ax.set_ylabel("PCA[1]", fontsize=18)
+    ax.set_zlabel("PCA[2]", fontsize=18)
     plt.suptitle(f'Grouped by damage class in 3D latent space using PCA', fontsize=16)
     plt.savefig(os.path.join(output_dir, "label_clusters_pca_3d.png"))
+    plt.show()
+
+
+
+    # Filtro per selezionare solo i punti della classe 1
+    class_1_indices = (labels == 1)
+    z_mean_class_1 = z_mean[class_1_indices]
+    damage_levels_class_1 = levels[class_1_indices]
+
+    # Esegue la PCA solo sui punti della classe 1
+    pca = PCA(n_components=3)
+    z_pca_class_1 = pca.fit_transform(z_mean_class_1)
+
+    # Crea il grafico
+    fig = plt.figure(figsize=(12, 10))
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Colora i punti in base ai damage levels della classe 1
+    scatter = ax.scatter(z_pca_class_1[:, 0], z_pca_class_1[:, 1], z_pca_class_1[:, 2],
+                        c=damage_levels_class_1, cmap='viridis')
+    color_bar = fig.colorbar(scatter, ax=ax)
+    color_bar.set_label('Damage Levels', fontsize=20)
+
+    # Setta le etichette degli assi e il titolo
+    ax.set_xlabel("PCA[0]", fontsize=18)
+    ax.set_ylabel("PCA[1]", fontsize=18)
+    ax.set_zlabel("PCA[2]", fontsize=18)
+    plt.suptitle(f'Class 1 - Grouped by damage level in 3D latent space using PCA', fontsize=16)
+
+    # Salva e mostra il grafico
+    plt.savefig(os.path.join(output_dir, "label_clusters_class_1_pca_3d_level.png"))
     plt.show()
 
 
@@ -708,6 +739,15 @@ else:
 
     # Caricamento dei pesi salvati
     vae.load_weights('./models/VAE_for_MCMC.weights.h5')    
+
+    damage_class_labels = np.argmax(labels_test, axis=1) 
+    damage_levels = np.array([labels_test[i, damage_class_labels[i]] for i in range(labels_test.shape[0])])
+
+    damage_class_labels = np.argmax(labels_test, axis=1) + 1
+
+    output_dir = "output_VAE_for_MCMC"
+    # plot_label_clusters(vae, observations_normalized , damage_class_labels)
+    plot_label_clusters_3d(vae, X_test , damage_class_labels, damage_levels)
     
 
 
@@ -845,30 +885,30 @@ else:
     ## Creazione latent dataset di train e test 2
     """
 
-    X_train, labels_train, N_ist_train = read_data(path_data_train, 100)
-    X_test, labels_test, N_ist_test = read_data(path_data_test, 100)
+    # X_train, labels_train, N_ist_train = read_data(path_data_train, 100)
+    # X_test, labels_test, N_ist_test = read_data(path_data_test, 100)
 
-    # Usa l'encoder per ottenere i vettori latenti (media e varianza)
-    z_mean_train, z_log_var_train, _ = vae.encoder.predict(X_train)
-    z_mean_test, z_log_var_test, _ = vae.encoder.predict(X_test)
+    # # Usa l'encoder per ottenere i vettori latenti (media e varianza)
+    # z_mean_train, z_log_var_train, _ = vae.encoder.predict(X_train)
+    # z_mean_test, z_log_var_test, _ = vae.encoder.predict(X_test)
 
-    # Concatena media e varianza lungo l'asse delle colonne
-    # Questo creerà un array con la media seguita dalla varianza per ogni dimensione latente
-    z_train_combined = np.concatenate([z_mean_train, z_log_var_train], axis=1)
-    z_test_combined = np.concatenate([z_mean_test, z_log_var_test], axis=1)
+    # # Concatena media e varianza lungo l'asse delle colonne
+    # # Questo creerà un array con la media seguita dalla varianza per ogni dimensione latente
+    # z_train_combined = np.concatenate([z_mean_train, z_log_var_train], axis=1)
+    # z_test_combined = np.concatenate([z_mean_test, z_log_var_test], axis=1)
     
-    # Convertili in un dataframe per facilità di salvataggio
-    # Per chiarezza, nominiamo le colonne come "mean_0", "mean_1", ..., "var_0", "var_1", ...
-    columns_train = [f"mean_{i}" for i in range(z_mean_train.shape[1])] + [f"var_{i}" for i in range(z_log_var_train.shape[1])]
-    latent_space_train_df = pd.DataFrame(z_train_combined, columns=columns_train)
+    # # Convertili in un dataframe per facilità di salvataggio
+    # # Per chiarezza, nominiamo le colonne come "mean_0", "mean_1", ..., "var_0", "var_1", ...
+    # columns_train = [f"mean_{i}" for i in range(z_mean_train.shape[1])] + [f"var_{i}" for i in range(z_log_var_train.shape[1])]
+    # latent_space_train_df = pd.DataFrame(z_train_combined, columns=columns_train)
 
-    columns_test = [f"mean_{i}" for i in range(z_mean_test.shape[1])] + [f"var_{i}" for i in range(z_log_var_test.shape[1])]
-    latent_space_test_df = pd.DataFrame(z_test_combined, columns=columns_test)
+    # columns_test = [f"mean_{i}" for i in range(z_mean_test.shape[1])] + [f"var_{i}" for i in range(z_log_var_test.shape[1])]
+    # latent_space_test_df = pd.DataFrame(z_test_combined, columns=columns_test)
 
-    # Crea il percorso completo del file
-    full_path_train = os.path.join(output_dir, "z_train2.csv")
-    full_path_test = os.path.join(output_dir, "z_test2.csv")
+    # # Crea il percorso completo del file
+    # full_path_train = os.path.join(output_dir, "z_train2.csv")
+    # full_path_test = os.path.join(output_dir, "z_test2.csv")
 
-    # Salva il dataframe in formato CSV
-    latent_space_train_df.to_csv(full_path_train, index=False)
-    latent_space_test_df.to_csv(full_path_test, index=False)
+    # # Salva il dataframe in formato CSV
+    # latent_space_train_df.to_csv(full_path_train, index=False)
+    # latent_space_test_df.to_csv(full_path_test, index=False)
