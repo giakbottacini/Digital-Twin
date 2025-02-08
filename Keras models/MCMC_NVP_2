@@ -979,7 +979,8 @@ def calcola_media_parametri(csv_file_name):
 """
 
 # Indice casuale per selezionare un campione dal dataset Z
-idx = np.random.randint(0, Z_test.shape[0]) 
+# idx = np.random.randint(0, Z_test.shape[0]) 
+idx = 2677
 
 # Estrai le colonne di media e log-varianza per il campione selezionato
 z_mean = Z_test[['mean_0', 'mean_1', 'mean_2', 'mean_3']].to_numpy()  # Estrai le colonne delle medie
@@ -1023,8 +1024,8 @@ for i in range(num_labels):
     plt.subplot(2, 4, i + 1)  # Crea una griglia di 2 righe e 4 colonne
     plt.hist(accepted_labels[i, :], bins=50, alpha=0.7, color='blue', edgecolor='black', range=(0,0.55))
     plt.title(f'Class {i + 1}\nTrue label: {true_label[i]:.2f}',fontsize=19)
-    plt.xlabel('Valore',fontsize=17)
-    plt.ylabel('Frequenza',fontsize=17)
+    plt.xlabel('Value',fontsize=17)
+    plt.ylabel('Frequency',fontsize=17)
     plt.tick_params(axis='both', which='major', labelsize=13)
     
 
