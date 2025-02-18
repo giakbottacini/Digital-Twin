@@ -20,14 +20,16 @@ def setup_environment():
     Configure the random seed and return the setup parameters.
     """
     np.random.seed(123)
-    n_samples = 128000
+    # n_samples = 128000
+    n_samples = 20000
     # resolutions = [(60, 60), (30, 30), (20,20), (15, 15)]
     resolutions = [(60,60)]
     field_mean, field_stdev, lamb_cov = 1, 1, 0.1
     # mkl_values = [64, 64, 64, 64]
-    mkl_values = [64]
-    x_data = y_data = np.array([0.1, 0.3, 0.5, 0.7, 0.9])
-    datapoints = np.array(list(product(x_data, y_data)))
+    mkl_values = [16]   #Number of modes (dominant patterns) i generate (higher->higher variability captured)
+    x_data = y_data = np.array([0.1, 0.3, 0.5, 0.7, 0.9])  # 5 X 5 grid of sensors
+    # x_data = y_data = np.array([0.25, 0.5, 0.75])  # 3 X 3 grid of sensors
+    datapoints = np.array(list(product(x_data, y_data)))  #Sensors's coordinates
     
     return n_samples, resolutions, field_mean, field_stdev, lamb_cov, mkl_values, datapoints
 
@@ -53,8 +55,8 @@ def solver_data(solver, datapoints, x):
     solver.solve(x)
     return solver.get_data(datapoints)
 
-def generate_samples(n_samples):
-    return norm_dist(loc=0, scale=1).ppf(lhcs(64, samples=n_samples))
+def generate_samples(mkl_values, n_samples):
+    return norm_dist(loc=0, scale=1).ppf(lhcs(mkl_values[0], samples=n_samples))
     
 
 def generate_solver_data(solvers, solver_key, samples, datapoints, path_prefix):
@@ -73,11 +75,16 @@ def generate_solver_data(solvers, solver_key, samples, datapoints, path_prefix):
         data[i, :] = solver_data(solver, datapoints, samples[i, :])
     
     # Split data into training and testing sets
-    split_idx = int(0.9 * n_samples)
-    np.savetxt(f"{path_prefix}/X_train_{solver_key}_60_3.csv", samples[:split_idx], delimiter=",")
-    np.savetxt(f"{path_prefix}/y_train_{solver_key}_60_3.csv", data[:split_idx], delimiter=",")
-    np.savetxt(f"{path_prefix}/X_test_{solver_key}_60_3.csv", samples[split_idx:], delimiter=",")
-    np.savetxt(f"{path_prefix}/y_test_{solver_key}_60_3.csv", data[split_idx:], delimiter=",")
+    split_idx = int(0.8 * n_samples)
+    # np.savetxt(f"{path_prefix}/X_train_{solver_key}_60_3.csv", samples[:split_idx], delimiter=",")
+    # np.savetxt(f"{path_prefix}/y_train_{solver_key}_60_3.csv", data[:split_idx], delimiter=",")
+    # np.savetxt(f"{path_prefix}/X_test_{solver_key}_60_3.csv", samples[split_idx:], delimiter=",")
+    # np.savetxt(f"{path_prefix}/y_test_{solver_key}_60_3.csv", data[split_idx:], delimiter=",")
+
+    np.savetxt(f"{path_prefix}/samples_train_{solver_key}_60.csv", samples[:split_idx], delimiter=",")
+    np.savetxt(f"{path_prefix}/sensorsdata_train_{solver_key}_60.csv", data[:split_idx], delimiter=",")
+    np.savetxt(f"{path_prefix}/samples_test_{solver_key}_60.csv", samples[split_idx:], delimiter=",")
+    np.savetxt(f"{path_prefix}/sensorsdata_test_{solver_key}_60.csv", data[split_idx:], delimiter=",")
 
 def project_to_pod_basis(coarse_data, n_components=45):
     """
@@ -161,21 +168,23 @@ def main():
     print("\nGenerate solver data \n")
 
     # Generate data for all solvers
-    samples = generate_samples(n_samples)
+    samples = generate_samples(mkl_values, n_samples)
 
     # for key in ["h1", "h2", "h3", "h4"]:
     #     generate_solver_data(solvers, key, samples, datapoints, "/data")
 
-    generate_solver_data(solvers, "h1", samples, datapoints, "/data")
+    save_path = '/root/shared/data'
 
-    print("\nProject solution and save POD \n")
-    datapoints = np.array(list(product(np.linspace(0.0, 1.0, 10), repeat=2)))
+    generate_solver_data(solvers, "h1", samples, datapoints, save_path)
+
+    # print("\nProject solution and save POD \n")
+    # datapoints = np.array(list(product(np.linspace(0.0, 1.0, 10), repeat=2)))
     
-    # Perform POD projection and save for all solvers
+    # # Perform POD projection and save for all solvers
     # for key in ["h1", "h2", "h3", "h4"]:
     #     project_and_save_pod(solvers, key, samples, datapoints, "/data")
 
-    project_and_save_pod(solvers, "h1", samples, datapoints, "/data")
+    # project_and_save_pod(solvers, "h1", samples, datapoints, "/data")
 
 if __name__ == "__main__":
     main()

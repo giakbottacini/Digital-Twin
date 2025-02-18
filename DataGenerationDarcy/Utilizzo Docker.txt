@@ -1,0 +1,11 @@
+PER AVVIARE DOCKER (IMMAGINE CON LIBRERIE GIUSTE): APRIRE POWERSHELL E SCRIVERE:
+
+docker run -ti -p 127.0.0.1:8000:8000 -v C:\Users\Giacomo\Desktop\Git-repos\Digital-Twin\DataGenerationDarcy:/root/shared -w /root/shared my_fenics_image
+
+PER RUNNARE CODICE NELLA CARTELLA DARCY (es. data_generation.py) CON PYTHON USARE:
+
+python3 /root/shared/data_generation.py
+
+PER USCIRE DAL DOCKER: 
+
+exit
