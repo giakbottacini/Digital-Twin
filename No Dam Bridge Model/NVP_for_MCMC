@@ -17,6 +17,9 @@ import seaborn as sns
 
 import scipy.stats as st
 
+EXPECTED_SHAPE_X = [None, 4]  # La dimensione batch può variare, ma x ha sempre 4 elementi
+EXPECTED_SHAPE_Y = [None, 6]  # La dimensione batch può variare, ma y ha sempre 7 elementi
+
 
 
 # Specify the example you are dealing with
@@ -68,7 +71,7 @@ def read_data(path_data, train):
     labels_level     = np.genfromtxt(label_path_level)
     
     # Filtra gli indici con damage_class diversa da 0
-    valid_indices = np.where(labels_class != 0)[0]
+    valid_indices = np.arange(len(labels_class))
     N_ist = len(valid_indices)  # Usa solo gli indici validi
 
     # Importiamo i valori generati dal VAE
@@ -81,13 +84,16 @@ def read_data(path_data, train):
 
 
     # Creazione dei vettori di label di 7 elementi
-    labels_vector = np.zeros((N_ist, 6))  # Vettore di etichette a 7 classi
+    labels_vector = np.zeros((N_ist, n_class))  # Vettore di etichette a 7 classi
     
-    for i, idx in enumerate(valid_indices):
-        # Inserisci il damage_level nella posizione corretta in base alla classe di danno
-        damage_class = labels_class[idx] - 1  # Mappiamo la classe 1 su 0, 2 su 1, ecc.
-        damage_level = labels_level[idx]
-        labels_vector[i][damage_class] = damage_level - 0.25
+    for i, val in enumerate(labels_class):
+        damage_class = val - 1  # Mappiamo la classe 1 su 0, 2 su 1, ecc.
+        damage_level = labels_level[i]
+        
+        if damage_class == -1:  # Se damage_class è 0 (mappato a -1)
+            labels_vector[i] = np.zeros(n_class)  # Imposta il vettore con tutti gli zeri
+        else:
+            labels_vector[i][damage_class] = damage_level #- 0.2  # Inserisci il damage_level nella posizione corretta
 
     return Z, labels_vector, N_ist
 
@@ -132,7 +138,7 @@ rate_drop = 0.05
 
 def Coupling(input_shape=latent_dim, num_classes=n_class, reg=0.005, dropout_rate=0.1):
     # Input per il vettore latente Z di dimensione 4
-    input_z = layers.Input(shape=(latent_dim,), name='Input_Z')
+    input_z = layers.Input(shape=(input_shape,), name='Input_Z')
     # Input per il vettore di label condizionale di dimensione num_classes
     input_l = layers.Input(shape=(num_classes,), name='Input_Label')
 
@@ -144,17 +150,17 @@ def Coupling(input_shape=latent_dim, num_classes=n_class, reg=0.005, dropout_rat
     # Livelli densi per la componente t (traslazione) con condizionamento MLP
     t = layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(reg))(input_z)
     t = layers.Dropout(dropout_rate)(t)  # Aggiungi Dropout
-    t_embedding = layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+    t_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
     t = layers.Concatenate()([t, t_embedding])  # Condizionamento con il label embedding
-    t = layers.Dense(32, activation="relu", kernel_regularizer=regularizers.l2(reg))(t)
+    t = layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(reg))(t)
     t = layers.Dense(latent_dim, activation="linear", kernel_regularizer=regularizers.l2(reg))(t)
 
     # Livelli densi per la componente s (scalatura) con condizionamento MLP
     s = layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(reg))(input_z)
     s = layers.Dropout(dropout_rate)(s)  # Aggiungi Dropout
-    s_embedding = layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+    s_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
     s = layers.Concatenate()([s, s_embedding])  # Condizionamento con il label embedding
-    s = layers.Dense(32, activation="relu", kernel_regularizer=regularizers.l2(reg))(s)
+    s = layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(reg))(s)
     s = layers.Dense(latent_dim, activation="tanh", kernel_regularizer=regularizers.l2(reg))(s)
 
     return keras.Model(inputs=[input_z, input_l], outputs=[s, t])
@@ -348,7 +354,7 @@ if train_or_predict:
     print(Z_train[:2])
 
 
-    NVP = RealNVP(num_coupling_layers=14, num_classes=n_class)
+    NVP = RealNVP(num_coupling_layers=16, num_classes=n_class)
 
     NVP.compile(optimizer=keras.optimizers.Adam(learning_rate=keras.optimizers.schedules.CosineDecay(initial_learning_rate=initial_lr, decay_steps=int(decay_length*n_epochs*N_ist_train*(1-validation_split)/batch_size), alpha=ratio_to_stop)))
     NVP.summary()
@@ -415,6 +421,50 @@ if train_or_predict:
     plt.show()
     plt.close()
 
+
+    #Plot True/Wrong loglikelihood
+    labels_train_wrong = np.random.permutation(labels_train)
+
+    log_likelihood_test = NVP.predict(Z_train, labels_train)
+    log_likelihood_wrong = NVP.predict(Z_train, labels_train_wrong)
+
+    print(f"Forma di log_likelihood_test: {log_likelihood_test.shape}")
+    print(f"Forma di log_likelihood_wrong: {log_likelihood_wrong.shape}")
+    print(f"Forma di labels_train_truncated: {labels_train_wrong.shape}")
+
+
+    # Converti i tensori in array NumPy
+    log_likelihood_wrong_np = log_likelihood_wrong.numpy()
+    log_likelihood_test_np = log_likelihood_test.numpy()
+
+
+    # Crea la figura
+    plt.figure(figsize=(8, 6))
+
+    # Istogramma del vettore log_likelihood_train
+    plt.hist(log_likelihood_wrong_np, bins=100, range=(2*min(log_likelihood_test_np), 2*max(log_likelihood_test_np)),
+            alpha=0.9, color='r', label='Wrong')
+
+    # Istogramma del vettore log_likelihood_test
+    plt.hist(log_likelihood_test_np, bins=100, range=(2*min(log_likelihood_test_np), 2*max(log_likelihood_test_np)),
+            alpha=0.8, color='b', label='Right')
+
+    # Titolo e etichette
+    plt.xlabel('Log-likelihood', fontsize=20)
+    plt.ylabel('Frequency', fontsize=20)
+    plt.grid(True)
+
+    # Aggiungi una legenda
+    plt.legend(fontsize=18)
+
+    # Salva il grafico in un file immagine
+    plt.savefig(os.path.join(output_dir, "hist_confronto_2.png"))
+
+    # Mostra il grafico
+    plt.show()
+
+
+
    
 else:
     """
@@ -433,10 +483,12 @@ else:
 
 
     # Creazione dell'istanza RealNVP
-    NVP = RealNVP(num_coupling_layers=14, num_classes=n_class)
+    NVP = RealNVP(num_coupling_layers=16, num_classes=n_class)
 
     # NVP.compile(optimizer = keras.optimizers.Adam(learning_rate=keras.optimizers.schedules.CosineDecay(initial_learning_rate=initial_lr, decay_steps=int(decay_length*n_epochs*N_ist_test*(1-validation_split)/batch_size), alpha=ratio_to_stop)))
     #Non serve compilare se non devo continuare il training
+
+    NVP.build([(None, latent_dim), (None, n_class)])
 
     # Caricamento dei pesi salvati
     NVP.load_weights('./models/NVP_for_MCMC.weights.h5')
@@ -445,84 +497,84 @@ else:
     hist = pd.read_pickle(path_save + 'hist_NVP_for_MCMC.pkl')
 
 
-    import time
+    # import time
 
-    # Selezione casuale di 3 indici da Z_test
-    random_indices = np.random.choice(Z_test.shape[0], size=2, replace=False)
+    # # Selezione casuale di 3 indici da Z_test
+    # random_indices = np.random.choice(Z_test.shape[0], size=2, replace=False)
 
-    # Inizio del timer per i 3 campioni
-    start_time = time.time()
+    # # Inizio del timer per i 3 campioni
+    # start_time = time.time()
 
-    # Predizione per i 3 campioni selezionati
-    log_likelihood_random = NVP.predict(Z_test[random_indices], labels_test[random_indices])
+    # # Predizione per i 3 campioni selezionati
+    # log_likelihood_random = NVP.predict(Z_test[random_indices], labels_test[random_indices])
 
-    # Fine del timer e calcolo del tempo
-    end_time = time.time()
-    random_time = end_time - start_time
-    print(f"Tempo di esecuzione per 3 campioni casuali: {random_time} secondi")
-
-
-
-    # Selezione casuale di 3 indici da Z_test
-    random_indices = np.random.choice(Z_test.shape[0], size=2, replace=False)
-
-    # Inizio del timer per i 3 campioni
-    start_time = time.time()
-
-    # Predizione per i 3 campioni selezionati
-    log_likelihood_random = NVP.predict(Z_test[random_indices], labels_test[random_indices])
-
-    # Fine del timer e calcolo del tempo
-    end_time = time.time()
-    random_time = end_time - start_time
-    print(f"Tempo di esecuzione per 3 campioni casuali: {random_time} secondi")
+    # # Fine del timer e calcolo del tempo
+    # end_time = time.time()
+    # random_time = end_time - start_time
+    # print(f"Tempo di esecuzione per 3 campioni casuali: {random_time} secondi")
 
 
 
-    # Inizio del timer per l'intero dataset
-    start_time = time.time()
+    # # Selezione casuale di 3 indici da Z_test
+    # random_indices = np.random.choice(Z_test.shape[0], size=2, replace=False)
 
-    # Esecuzione del modello NVP sul dataset intero
-    log_likelihood_test = NVP.predict(Z_test, labels_test)
+    # # Inizio del timer per i 3 campioni
+    # start_time = time.time()
 
-    # Fine del timer e calcolo del tempo
-    end_time = time.time()
-    total_time = end_time - start_time
-    print(f"Tempo di esecuzione per l'intero dataset: {total_time} secondi")
+    # # Predizione per i 3 campioni selezionati
+    # log_likelihood_random = NVP.predict(Z_test[random_indices], labels_test[random_indices])
+
+    # # Fine del timer e calcolo del tempo
+    # end_time = time.time()
+    # random_time = end_time - start_time
+    # print(f"Tempo di esecuzione per 3 campioni casuali: {random_time} secondi")
 
 
 
+    # # Inizio del timer per l'intero dataset
+    # start_time = time.time()
 
-    # Selezione casuale di 3 indici da Z_test
-    random_indices = np.random.choice(Z_test.shape[0], size=1, replace=False)
+    # # Esecuzione del modello NVP sul dataset intero
+    # log_likelihood_test = NVP.predict(Z_test, labels_test)
 
-    # Inizio del timer per i 3 campioni
-    start_time = time.time()
-
-    # Predizione per i 3 campioni selezionati
-    log_likelihood_random = NVP.predict_per_uno(Z_test[random_indices], labels_test[random_indices])
-
-    # Fine del timer e calcolo del tempo
-    end_time = time.time()
-    random_time = end_time - start_time
-    print(f"Tempo di esecuzione per 3 campioni casuali: {random_time} secondi")
+    # # Fine del timer e calcolo del tempo
+    # end_time = time.time()
+    # total_time = end_time - start_time
+    # print(f"Tempo di esecuzione per l'intero dataset: {total_time} secondi")
 
 
 
 
-    # Selezione casuale di 3 indici da Z_test
-    random_indices = np.random.choice(Z_test.shape[0], size=1, replace=False)
+    # # Selezione casuale di 3 indici da Z_test
+    # random_indices = np.random.choice(Z_test.shape[0], size=1, replace=False)
 
-    # Inizio del timer per i 3 campioni
-    start_time = time.time()
+    # # Inizio del timer per i 3 campioni
+    # start_time = time.time()
 
-    # Predizione per i 3 campioni selezionati
-    log_likelihood_random = NVP.predict_per_uno(Z_test[random_indices], labels_test[random_indices])
+    # # Predizione per i 3 campioni selezionati
+    # log_likelihood_random = NVP.predict_per_uno(Z_test[random_indices], labels_test[random_indices])
 
-    # Fine del timer e calcolo del tempo
-    end_time = time.time()
-    random_time = end_time - start_time
-    print(f"Tempo di esecuzione per 3 campioni casuali: {random_time} secondi")
+    # # Fine del timer e calcolo del tempo
+    # end_time = time.time()
+    # random_time = end_time - start_time
+    # print(f"Tempo di esecuzione per 3 campioni casuali: {random_time} secondi")
+
+
+
+
+    # # Selezione casuale di 3 indici da Z_test
+    # random_indices = np.random.choice(Z_test.shape[0], size=1, replace=False)
+
+    # # Inizio del timer per i 3 campioni
+    # start_time = time.time()
+
+    # # Predizione per i 3 campioni selezionati
+    # log_likelihood_random = NVP.predict_per_uno(Z_test[random_indices], labels_test[random_indices])
+
+    # # Fine del timer e calcolo del tempo
+    # end_time = time.time()
+    # random_time = end_time - start_time
+    # print(f"Tempo di esecuzione per 3 campioni casuali: {random_time} secondi")
 
 
 
@@ -572,15 +624,16 @@ else:
 
 
 
-    labels_train_truncated = labels_train[:3429,:]
+    #CONFRONTO CLASSE GIUSTA MA LABEL SBAGLIATO
+    # Ottieni le classi previste
+
+    labels_test_wrong = labels_train[:4000,:]
 
     log_likelihood_test = NVP.predict(Z_test, labels_test)
-    log_likelihood_wrong = NVP.predict(Z_test, labels_train_truncated)
+    log_likelihood_wrong = NVP.predict(Z_test, labels_test_wrong)
 
-    print(f"Forma di log_likelihood_test: {log_likelihood_test.shape}")
-    print(f"Forma di log_likelihood_wrong: {log_likelihood_wrong.shape}")
-    print(f"Forma di labels_train_truncated: {labels_train_truncated.shape}")
-
+    print(log_likelihood_test.shape)
+    print(log_likelihood_wrong.shape)
 
     # Converti i tensori in array NumPy
     log_likelihood_wrong_np = log_likelihood_wrong.numpy()
@@ -591,11 +644,11 @@ else:
     plt.figure(figsize=(8, 6))
 
     # Istogramma del vettore log_likelihood_train
-    plt.hist(log_likelihood_wrong_np, bins=100, range=(2*min(log_likelihood_test_np), 2*max(log_likelihood_test_np)),
+    plt.hist(log_likelihood_wrong_np, bins=100, range=(-150, max(log_likelihood_wrong_np)),
             alpha=0.9, color='r', label='Wrong')
 
     # Istogramma del vettore log_likelihood_test
-    plt.hist(log_likelihood_test_np, bins=100, range=(2*min(log_likelihood_test_np), 2*max(log_likelihood_test_np)),
+    plt.hist(log_likelihood_test_np, bins=100, range=(2*min(log_likelihood_test_np), max(log_likelihood_test_np)),
             alpha=0.8, color='b', label='Right')
 
     # Titolo e etichette

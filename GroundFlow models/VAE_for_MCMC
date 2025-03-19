@@ -39,12 +39,14 @@ path_save       = "models/"
 #Position of mean and std. deviation
 path_restore  = '../DataGenerationDarcy/data/'
 
-seq_len = 25
-n_params = 16
+seq_len = 36 #25 
+n_params = 4 #6 #9
 
-
-
-
+# lambdas = np.array([3.86, 3.14, 3.14, 2.55, 2.23, 2.23])  #For lam=0.10
+# lambdas = np.array([5.93, 4.32, 4.32, 3.15, 2.57, 2.57])  #For lam=0.18
+# lambdas = np.array([0.0, 0.0, 0.0, 0.0])   #For 3x3 case
+# lambdas = np.array([17.8, 6.40, 6.40, 2.31, 1.33, 1.33])  #For lam=0.40
+lambdas = np.array([17.8, 6.40, 6.40, 2.31])  #For lam=0.40
 
 def RMS(signal):
     return np.sqrt(np.mean(signal**2))
@@ -55,6 +57,13 @@ def read_data(path_data, added_SNR):
     #Import labels (coeff of KL of the field)
     labels_path = path_data + '/samples_h1_60.csv'
     labels = np.genfromtxt(labels_path, delimiter=',', dtype=float)
+
+    # Seleziona solo le prime 4 colonne
+    labels = labels[:, :n_params]
+
+    # scaling_factors = np.array([5.93, 4.32, 4.32, 3.15, 2.57, 2.57])  # Peso per ogni elemento del label
+    # scaling_factors = np.array([17.8, 6.40, 6.40, 2.31, 1.33, 1.33])
+    # scaled_labels = labels * scaling_factors  # Moltiplicazione elemento per elemento
 
     #Import simulation data from sensors
     sensors_path = path_data + '/sensorsdata_h1_60.csv'
@@ -126,11 +135,9 @@ class Sampling(layers.Layer):
 
 
 
-"""
-## Using Matteo's architecture
-"""
 
-latent_dim = 4
+
+latent_dim = 8
 
 # Hyperparameters
 validation_split = 0.20
@@ -141,15 +148,17 @@ initial_lr = 1e-3
 decay_length = 0.8
 ratio_to_stop = 0.05
 
+
+
 filter_1      = 32;   filter_2      = 64;   filter_3      = 32
-kernel_size_1 = 3;   kernel_size_2 =  3;   kernel_size_3 = 3
-neurons_4 = 64
+kernel_size_1 = 3;   kernel_size_2 =  2;   kernel_size_3 = 2
+neurons_4 = 32
 neurons_5 = 16
 attivaz_conv = 'tanh'
 attivaz_mlp = 'tanh'
 k_reg = 1e-3
 b_reg = 1e-3
-rate_drop = 0.05
+rate_drop = 0.3 #0.2
 
 """
 ## Build the encoder 
@@ -158,46 +167,41 @@ rate_drop = 0.05
 
 encoder_inputs = layers.Input(shape=(seq_len,), name='Convolutional_inputs')
 
-# Reshape per trasformare il vettore di 9 elementi in una griglia 3x3
-x = layers.Reshape((int(np.sqrt(seq_len)), int(np.sqrt(seq_len)), 1))(encoder_inputs)  # 3x3 è la forma della griglia, 1 è il numero di canali
+# Reshape per trasformare il vettore di 25 elementi in una griglia 3x3
+x = layers.Reshape((int(np.sqrt(seq_len)), int(np.sqrt(seq_len)), 1))(encoder_inputs)  # 5x5 è la forma della griglia, 1 è il numero di canali
 
-x = layers.Conv2D(filters=filter_1, kernel_size=(kernel_size_1, kernel_size_1), 
-                  kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), 
-                  activation=None, padding='same', name='Conv_1')(x)
-x = layers.BatchNormalization()(x)  # Aggiunto
-x = layers.Activation(attivaz_conv)(x)  # Applicato attivazione dopo la BN
-x = layers.Dropout(rate=rate_drop)(x)  # Dropout per regolarizzare
+x = layers.Conv2D(filters=filter_1, kernel_size=(kernel_size_1, kernel_size_1), kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=None, padding='same', name='Conv_1')(x)
+x = layers.BatchNormalization()(x)  # Normalizzazione del batch
+x = layers.Activation('tanh')(x)  # Applica l'attivazione dopo la BatchNorm
+x = layers.Dropout(rate=rate_drop)(x) 
 
 # Secondo layer convoluzionale 2D
-x = layers.Conv2D(filters=filter_2, kernel_size=(kernel_size_2, kernel_size_2), 
-                  kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), 
-                  activation=None, padding='same', name='Conv_2')(x)
-x = layers.BatchNormalization()(x)  # Aggiunto
-x = layers.Activation(attivaz_conv)(x)  # Applicato attivazione dopo la BN
-x = layers.Dropout(rate=rate_drop)(x)
+x = layers.Conv2D(filters=filter_2, kernel_size=(kernel_size_2, kernel_size_2), kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=None, padding='same', name='Conv_2')(x)
+x = layers.BatchNormalization()(x)  # Normalizzazione del batch
+x = layers.Activation('tanh')(x)  # Applica l'attivazione dopo la BatchNorm
+x = layers.Dropout(rate=rate_drop)(x) 
 
 # Terzo layer convoluzionale 2D
-x = layers.Conv2D(filters=filter_3, kernel_size=(kernel_size_3, kernel_size_3), 
-                  kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), 
-                  activation=None, padding='same', name='Conv_3')(x)
-x = layers.BatchNormalization()(x)  # Aggiunto
-x = layers.Activation(attivaz_conv)(x)  # Applicato attivazione dopo la BN
-x = layers.Dropout(rate=rate_drop)(x)
+x = layers.Conv2D(filters=filter_3, kernel_size=(kernel_size_3, kernel_size_3), kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=None, padding='same', name='Conv_3')(x)
+x = layers.BatchNormalization()(x)  # Normalizzazione del batch
+x = layers.Activation('tanh')(x)  # Applica l'attivazione dopo la BatchNorm
+x = layers.Dropout(rate=rate_drop)(x) 
 
 # Flatten dei dati per connettersi ai layer fully connected
 x = layers.Flatten()(x)
 
 # Dense layers per l'encoder
-x = layers.Dense(units=neurons_4, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
+x = layers.Dense(units=neurons_4, activation=None, kernel_regularizer=regularizers.l2(k_reg), 
                  bias_regularizer=regularizers.l2(b_reg), name='Dense_1')(x)
-x = layers.Dense(units=neurons_5, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
-                 bias_regularizer=regularizers.l2(b_reg), name='Dense_2')(x)
+x = layers.BatchNormalization()(x)  # Normalizzazione del batch
+x = layers.Activation('relu')(x)  # Applica l'attivazione dopo la BatchNorm
+x = layers.Dropout(rate=rate_drop)(x) 
+# x = layers.Dense(units=neurons_5, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
+#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_2')(x)
 
 # Layer per la parte di variabili latenti (VAE)
-z_mean = layers.Dense(latent_dim, activation=None, kernel_regularizer=regularizers.l2(k_reg), 
-                      bias_regularizer=regularizers.l2(b_reg), name='z_mean')(x)
-z_log_var = layers.Dense(latent_dim, activation=None, kernel_regularizer=regularizers.l2(k_reg), 
-                         bias_regularizer=regularizers.l2(b_reg), name='z_log_var')(x)
+z_mean = layers.Dense(latent_dim, activation=None, name='z_mean')(x)
+z_log_var = layers.Dense(latent_dim, activation=None, name='z_log_var')(x)
 
 # Sampling della variabile latente
 z = Sampling()([z_mean, z_log_var])
@@ -206,66 +210,6 @@ z = Sampling()([z_mean, z_log_var])
 encoder = keras.Model(encoder_inputs, [z_mean, z_log_var, z], name="encoder")
 encoder.summary()
 
-
-# latent_dim = 4
-
-# # Hyperparameters
-# validation_split = 0.20
-# batch_size = 32
-# n_epochs = 150
-# early_stop_epochs=30
-# initial_lr = 1e-3
-# decay_length = 0.8
-# ratio_to_stop = 0.05
-
-# neurons_1 = 64
-# neurons_2 = 128
-# neurons_3 = 64
-# neurons_4 = 32
-# neurons_5 = 16
-# attivaz_mlp = 'tanh'
-# k_reg = 1e-3
-# b_reg = 1e-3
-# rate_drop = 0.1
-
-# """
-# ## Nuovo encoder (MLP)
-# """
-# encoder_inputs = layers.Input(shape=(seq_len,), name='MLP_inputs')
-
-# x = layers.Dense(units=neurons_1, activation=attivaz_mlp, 
-#                  kernel_regularizer=regularizers.l2(k_reg), 
-#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_1')(encoder_inputs)
-# x = layers.Dropout(rate=rate_drop)(x)
-
-# x = layers.Dense(units=neurons_2, activation=attivaz_mlp, 
-#                  kernel_regularizer=regularizers.l2(k_reg), 
-#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_2')(x)
-# x = layers.Dropout(rate=rate_drop)(x)
-
-# x = layers.Dense(units=neurons_3, activation=attivaz_mlp, 
-#                  kernel_regularizer=regularizers.l2(k_reg), 
-#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_3')(x)
-# x = layers.Dropout(rate=rate_drop)(x)
-
-# x = layers.Dense(units=neurons_4, activation=attivaz_mlp, 
-#                  kernel_regularizer=regularizers.l2(k_reg), 
-#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_4')(x)
-# x = layers.Dropout(rate=rate_drop)(x)
-
-# x = layers.Dense(units=neurons_5, activation=attivaz_mlp, 
-#                  kernel_regularizer=regularizers.l2(k_reg), 
-#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_5')(x)
-
-# # Strato latente
-# z_mean = layers.Dense(latent_dim, activation=None, name='z_mean')(x)
-# z_log_var = layers.Dense(latent_dim, activation=None, name='z_log_var')(x)
-
-# z = Sampling()([z_mean, z_log_var])
-
-# # Modello Encoder
-# encoder = keras.Model(encoder_inputs, [z_mean, z_log_var, z], name="encoder")
-# encoder.summary()
 
 
 
@@ -280,92 +224,41 @@ latent_inputs = layers.Input(shape=(latent_dim,), name='Latent_inputs')
 # Espansione del vettore latente in una forma adatta per il decoder (Dense + Reshape)
 x = layers.Dense(units=neurons_4, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
                  bias_regularizer=regularizers.l2(b_reg), name='Dense_1_decoder')(latent_inputs)
-x = layers.Dense(units=neurons_5, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
+x = layers.Dense(units=6*6*filter_3, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
                  bias_regularizer=regularizers.l2(b_reg), name='Dense_2_decoder')(x)
 
 # Reshape per ottenere una griglia 
-x = layers.Reshape((int(np.sqrt(neurons_5)), int(np.sqrt(neurons_5)), 1))(x)
+# x = layers.Reshape((int(np.sqrt(neurons_5)), int(np.sqrt(neurons_5)), 1))(x)
+x = layers.Reshape((int(np.sqrt(seq_len)), int(np.sqrt(seq_len)), filter_3))(x)
 
 # Primo layer di convoluzione trasposta
-x = layers.Conv2DTranspose(filters=filter_3, kernel_size=(kernel_size_3, kernel_size_3), 
-                           strides=(2, 2), padding='same', kernel_regularizer=regularizers.l2(k_reg), 
-                           bias_regularizer=regularizers.l2(b_reg), activation=None, 
-                           name='Conv2DTranspose_1')(x)
-x = layers.BatchNormalization()(x)  # Aggiunto
-x = layers.Activation(attivaz_conv)(x)  # Applicato attivazione dopo la BN
-x = layers.Dropout(rate=rate_drop)(x)
+x = layers.Conv2DTranspose(filters=filter_2, kernel_size=(kernel_size_3, kernel_size_3), padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=None, name='Conv2DTranspose_1')(x)
+x = layers.BatchNormalization()(x)  # Normalizzazione del batch
+x = layers.Activation('relu')(x)  # Applica l'attivazione dopo la BatchNorm
+x = layers.Dropout(rate=rate_drop)(x) 
 
 # Secondo layer di convoluzione trasposta
-x = layers.Conv2DTranspose(filters=filter_2, kernel_size=(kernel_size_2, kernel_size_2), 
-                           strides=(2, 2), padding='same', kernel_regularizer=regularizers.l2(k_reg), 
-                           bias_regularizer=regularizers.l2(b_reg), activation=None, 
-                           name='Conv2DTranspose_2')(x)
-x = layers.BatchNormalization()(x)  # Aggiunto
-x = layers.Activation(attivaz_conv)(x)  # Applicato attivazione dopo la BN
-x = layers.Dropout(rate=rate_drop)(x)
+x = layers.Conv2DTranspose(filters=filter_1, kernel_size=(kernel_size_2, kernel_size_2), padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=None, name='Conv2DTranspose_2')(x)
+x = layers.BatchNormalization()(x)  # Normalizzazione del batch
+x = layers.Activation('relu')(x)  # Applica l'attivazione dopo la BatchNorm
+x = layers.Dropout(rate=rate_drop)(x) 
 
 # Terzo layer di convoluzione trasposta
-x = layers.Conv2DTranspose(filters=filter_1, kernel_size=(kernel_size_1, kernel_size_1), 
-                           strides=(2, 2), padding='same', kernel_regularizer=regularizers.l2(k_reg), 
-                           bias_regularizer=regularizers.l2(b_reg), activation=None, 
-                           name='Conv2DTranspose_3')(x)
-x = layers.BatchNormalization()(x)  # Aggiunto
-x = layers.Activation(attivaz_conv)(x)  # Applicato attivazione dopo la BN
-x = layers.Dropout(rate=rate_drop)(x)
-
-
-x = layers.Conv2DTranspose(filters=1, kernel_size=(2, 2), strides=(2, 2), activation=attivaz_conv, 
-                           padding='same', bias_regularizer=regularizers.l2(b_reg), 
-                           name='Conv2DTranspose_4')(x)
+x = layers.Conv2DTranspose(filters=1, kernel_size=(3, 3), activation=None, padding='same', bias_regularizer=regularizers.l2(b_reg), name='Conv2DTranspose_3')(x)
+x = layers.BatchNormalization()(x)  # Normalizzazione del batch
+x = layers.Activation('relu')(x)  # Applica l'attivazione dopo la BatchNorm
+x = layers.Dropout(rate=rate_drop)(x) 
 
 # Flatten per convertire il risultato in un vettore
 x = layers.Flatten()(x)
 
 # Ultimo layer denso per ottenere un vettore di dimensione seq_len
-decoder_outputs = layers.Dense(seq_len, activation='linear', name='Final_output')(x)
+decoder_outputs = layers.Dense(seq_len, activation=None, name='Final_output')(x)
 
 
 # Creazione del modello del decoder
 decoder = keras.Model(latent_inputs, decoder_outputs, name="Decoder")
 decoder.summary()
-
-
-"""
-## Build decoder (MLP)
-"""
-# decoder_inputs = layers.Input(shape=(latent_dim,), name='Latent_inputs')
-
-# x = layers.Dense(units=neurons_5, activation=attivaz_mlp, 
-#                  kernel_regularizer=regularizers.l2(k_reg), 
-#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_1')(decoder_inputs)
-# x = layers.Dropout(rate=rate_drop)(x)
-
-# x = layers.Dense(units=neurons_4, activation=attivaz_mlp, 
-#                  kernel_regularizer=regularizers.l2(k_reg), 
-#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_2')(decoder_inputs)
-# x = layers.Dropout(rate=rate_drop)(x)
-
-# x = layers.Dense(units=neurons_3, activation=attivaz_mlp, 
-#                  kernel_regularizer=regularizers.l2(k_reg), 
-#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_3')(decoder_inputs)
-# x = layers.Dropout(rate=rate_drop)(x)
-
-# x = layers.Dense(units=neurons_2, activation=attivaz_mlp, 
-#                  kernel_regularizer=regularizers.l2(k_reg), 
-#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_4')(x)
-# x = layers.Dropout(rate=rate_drop)(x)
-
-# x = layers.Dense(units=neurons_1, activation=attivaz_mlp, 
-#                  kernel_regularizer=regularizers.l2(k_reg), 
-#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_5')(x)
-
-# decoder_outputs = layers.Dense(units=seq_len, activation='linear', name='Decoder_output')(x)
-
-# # Modello Decoder
-# decoder = keras.Model(decoder_inputs, decoder_outputs, name="decoder")
-# decoder.summary()
-
-
 
 
 
@@ -375,15 +268,120 @@ decoder.summary()
 
 latent_inputs_predictor = layers.Input(shape=(latent_dim,), name='Latent_inputs')
 
+# x = layers.Dense(units=32, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Dense_1')(latent_inputs_predictor)
+# x = layers.Dropout(rate=rate_drop)(x) 
+# # x = layers.Dense(units=128, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Dense_2')(x)
+# x = layers.Dense(units=64, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Dense_3')(x)
+# x = layers.Dropout(rate=rate_drop)(x) 
+# x = layers.Dense(units=32, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Dense_4')(x)
+# x = layers.Dropout(rate=rate_drop)(x) 
+# # Layer di output del predictor con attivazione lineare
+# Dense_output = layers.Dense(n_params, activation='linear', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Dense_3_linear')(x)
+
 x = layers.Dense(units=64, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Dense_1')(latent_inputs_predictor)
+x = layers.Dropout(rate=rate_drop)(x)
 x = layers.Dense(units=32, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Dense_2')(x)
-# Layer di output del predictor con attivazione lineare
+# Layer di output del classificatore con attivazione lineare
 Dense_output = layers.Dense(n_params, activation='linear', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Dense_3_linear')(x)
 
 
 # Definisci il modello
 predictor = keras.Model(latent_inputs_predictor, Dense_output, name='Predictor')
 predictor.summary()
+
+
+
+# # Parametri
+# seq_len = 25  # Numero di elementi nell'input (griglia 5x5)
+# latent_dim = 4  # Dimensione della variabile latente (può essere modificata)
+# neurons_1 = 128  # Numero di neuroni nel primo layer fully connected
+# neurons_2 = 64   # Numero di neuroni nel secondo layer fully connected
+# neurons_3 = 32   # Numero di neuroni nel terzo layer fully connected
+# k_reg = 1e-3     # Regularization per i pesi
+# b_reg = 1e-3     # Regularization per i bias
+# attivaz_mlp = 'elu'  # Funzione di attivazione
+
+# # Encoder: Input di dimensione (25,) => griglia di sensori (5x5)
+# encoder_inputs = layers.Input(shape=(seq_len,), name='Convolutional_inputs')
+
+# # Primo layer fully connected
+# x = layers.Dense(units=neurons_2, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
+#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_1_encoder')(encoder_inputs)
+# x = layers.BatchNormalization()(x)
+# # Secondo layer fully connected
+# x = layers.Dense(units=neurons_1, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
+#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_2_encoder')(x)
+# x = layers.BatchNormalization()(x)
+
+# # Terzo layer fully connected
+# x = layers.Dense(units=neurons_2, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
+#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_3_encoder')(x)
+# x = layers.BatchNormalization()(x)
+
+# x = layers.Dense(units=neurons_3, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
+#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_4_encoder')(x)
+# x = layers.BatchNormalization()(x)
+
+# # Variabili latenti (media e log varianza per il VAE)
+# z_mean = layers.Dense(latent_dim, activation=None, name='z_mean')(x)
+# z_log_var = layers.Dense(latent_dim, activation=None, name='z_log_var')(x)
+
+# # Campionamento della variabile latente (condivisione della stessa variabile)
+# z = Sampling()([z_mean, z_log_var])
+
+# # Creazione del modello Encoder
+# encoder = keras.Model(encoder_inputs, [z_mean, z_log_var, z], name="encoder")
+# encoder.summary()
+
+
+
+
+# # Decoder: Input dalla variabile latente
+# latent_inputs = layers.Input(shape=(latent_dim,), name='Latent_inputs')
+
+# # Primo layer denso del decoder
+# x = layers.Dense(units=neurons_3, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
+#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_1_decoder')(latent_inputs)
+# x = layers.BatchNormalization()(x)
+
+# # Secondo layer denso del decoder
+# x = layers.Dense(units=neurons_2, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
+#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_2_decoder')(x)
+# x = layers.BatchNormalization()(x)
+
+# # Terzo layer denso del decoder
+# x = layers.Dense(units=neurons_1, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
+#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_3_decoder')(x)
+# x = layers.BatchNormalization()(x)
+
+# x = layers.Dense(units=neurons_2, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
+#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_3_encoder')(x)
+# x = layers.BatchNormalization()(x)
+
+# # Layer finale per ricostruire il vettore di output (dimensione seq_len)
+# decoder_outputs = layers.Dense(seq_len, activation=None, name='Final_output')(x)
+
+# # Creazione del modello Decoder
+# decoder = keras.Model(latent_inputs, decoder_outputs, name="Decoder")
+# decoder.summary()
+
+
+
+# latent_inputs_predictor = layers.Input(shape=(latent_dim,), name='Latent_inputs')
+# x = layers.Dense(units=64, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Dense_1')(latent_inputs_predictor)
+# x = layers.BatchNormalization()(x)
+# x = layers.Dense(units=128, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Dense_2')(x)
+# x = layers.BatchNormalization()(x)
+# x = layers.Dense(units=32, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Dense_3')(x)
+# x = layers.BatchNormalization()(x)
+# # Layer di output del predictor con attivazione lineare
+# Dense_output = layers.Dense(n_params, activation='linear', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Dense_3_linear')(x)
+
+# # Definisci il modello
+# predictor = keras.Model(latent_inputs_predictor, Dense_output, name='Predictor')
+# predictor.summary()
+
+
 
 
 
@@ -410,10 +408,10 @@ class VAE(keras.Model):
             self.total_loss_tracker,
             self.reconstruction_loss_tracker,
             self.kl_loss_tracker,
+            self.predictor_loss_tracker,
         ]
 
     def prediction_loss(self, true_labels, predictor_preds):
-        weights = tf.linspace(1.0, 0.1, n_params)
 
         true_labels = tf.cast(true_labels, tf.float32)
         predictor_preds = tf.cast(predictor_preds, tf.float32)
@@ -423,7 +421,7 @@ class VAE(keras.Model):
         squared_diff = tf.square(diff)  # differenza al quadrato
         
         # Moltiplica la differenza al quadrato per il vettore dei pesi
-        weighted_loss = squared_diff * weights  # Moltiplicazione element-wise
+        weighted_loss = squared_diff * lambdas  # Moltiplicazione element-wise
         
         # Somma lungo la dimensione delle features (per ogni esempio nel batch)
         loss_per_sample = tf.reduce_sum(weighted_loss, axis=1)
@@ -431,7 +429,7 @@ class VAE(keras.Model):
         loss_per_batch = tf.reduce_mean(loss_per_sample)
         
         return loss_per_batch
-
+    
 
     def train_step(self, data):
 
@@ -452,13 +450,18 @@ class VAE(keras.Model):
             kl_loss = -0.5 * (1 + z_log_var - ops.square(z_mean) - ops.exp(z_log_var))
             kl_loss = ops.mean(kl_loss)
 
+            # predictor_loss = keras.losses.mean_squared_error(predictor_preds, true_labels)
+            # predictor_loss = tf.reduce_mean(predictor_loss)
+            # predictor_loss = tf.cast(predictor_loss, tf.float32)
+
             # Prediction loss
             predictor_loss = self.prediction_loss(true_labels, predictor_preds)
 
-            alfa = 2.0
+            alfa = 10.0
             beta = 1.0
-            gamma = 1.0
-            total_loss = alfa * reconstruction_loss + beta * kl_loss + gamma * predictor_loss
+            gamma = 0.30
+            total_loss = alfa * reconstruction_loss + beta * kl_loss + gamma * predictor_loss 
+
 
         grads = tape.gradient(total_loss, self.trainable_weights)
         self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
@@ -488,15 +491,19 @@ class VAE(keras.Model):
             keras.losses.mean_squared_error(observations, reconstruction)
             )
         
-        kl_loss = -0.5 * tf.reduce_sum(1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var), axis=1)
-        kl_loss = tf.reduce_mean(kl_loss)
+        kl_loss = -0.5 * (1 + z_log_var - ops.square(z_mean) - ops.exp(z_log_var))
+        kl_loss = ops.mean(kl_loss)
 
         # Prediction loss
         predictor_loss = self.prediction_loss(true_labels, predictor_preds)
 
-        alfa = 2.0
+        # predictor_loss = keras.losses.mean_squared_error(predictor_preds, true_labels)
+        # predictor_loss = tf.reduce_mean(predictor_loss)
+        # predictor_loss = tf.cast(predictor_loss, tf.float32)
+
+        alfa = 10.0
         beta = 1.0
-        gamma = 1.0
+        gamma = 0.30
         total_loss = alfa * reconstruction_loss + beta * kl_loss + gamma * predictor_loss
 
         return {
@@ -621,8 +628,8 @@ def plot_label_clusters_3d(vae, data, labels):
     # plt.savefig(os.path.join(output_dir, "latent_first_coeff_pca_3d.png"))
     # plt.show()
 
-    # Crea il grafico con 4 subplot
-    fig, axes = plt.subplots(2, 2, figsize=(15, 12), subplot_kw={'projection': '3d'})
+    # Crea il grafico con 9 subplot
+    fig, axes = plt.subplots(2, 2, figsize=(15, 15), subplot_kw={'projection': '3d'})
 
     # Loop per generare i 4 subplot con colori diversi
     for i, ax in enumerate(axes.flat):
@@ -641,7 +648,7 @@ def plot_label_clusters_3d(vae, data, labels):
     plt.suptitle('3D PCA Colored by Different Coefficients', fontsize=16)
 
     # Salva e mostra il grafico
-    output_dir = "."  # Modifica con il tuo percorso di salvataggio
+    output_dir = "output_VAE_for_MCMC"
     plt.savefig(os.path.join(output_dir, "latent_coeff_pca_3d_subplots.png"))
     plt.show()
 
@@ -652,7 +659,7 @@ def plot_label_clusters_3d(vae, data, labels):
 
 
 
-train_or_predict = 0   # 1: training, 0: predict                                       
+train_or_predict = 1   # 1: training, 0: predict                                       
 
 
 if train_or_predict:
@@ -661,24 +668,17 @@ if train_or_predict:
     ## Model training
     """
 
-    X_train, labels_train, N_ist = read_data(path_data_train, 1000)
+    X_train, labels_train, N_ist = read_data(path_data_train, 100)
 
     print(f"Forma di X_train: {X_train.shape}")
 
     print(f"Forma di labels: {labels_train.shape}")
 
-    print("Prime 2 righe di X_train:")
-    print(X_train[:2])
-
-    np.random.seed(42)  
-    indices = np.random.permutation(len(X_train))
-    
-    # Applica lo shuffle mantenendo la corrispondenza tra dati e label
-    X_train = X_train[indices]
-    labels_train = labels_train[indices]
+    # print("Prime 2 righe di X_train:")
+    # print(X_train[:2])
 
     # Separare i dati in training e validation set
-    train_observations, val_observations, train_labels, val_labels = train_test_split(X_train, labels_train, test_size=validation_split, random_state=42)
+    train_observations, val_observations, train_labels, val_labels = train_test_split(X_train, labels_train, test_size=validation_split, shuffle=True)
 
     # Creare dataset TensorFlow per il training
     train_dataset = tf.data.Dataset.from_tensor_slices((train_observations, train_labels))
@@ -758,7 +758,7 @@ else:
     """
 
     # Caricamento dei dati di test
-    X_test, labels_test, N_ist_test = read_data(path_data_test, 1000)
+    X_test, labels_test, N_ist_test = read_data(path_data_test, 100)
 
     print(f"Forma di X_test: {X_test.shape}")
 
@@ -813,30 +813,30 @@ else:
     ## Creazione latent dataset di train e test 2 per mcmc_2
     """
 
-    # X_train, labels_train, N_ist_train = read_data(path_data_train, 100)
-    # X_test, labels_test, N_ist_test = read_data(path_data_test, 100)
+    X_train, labels_train, N_ist_train = read_data(path_data_train, 100)
+    X_test, labels_test, N_ist_test = read_data(path_data_test, 100)
 
-    # # Usa l'encoder per ottenere i vettori latenti (media e varianza)
-    # z_mean_train, z_log_var_train, _ = vae.encoder.predict(X_train)
-    # z_mean_test, z_log_var_test, _ = vae.encoder.predict(X_test)
+    # Usa l'encoder per ottenere i vettori latenti (media e varianza)
+    z_mean_train, z_log_var_train, _ = vae.encoder.predict(X_train)
+    z_mean_test, z_log_var_test, _ = vae.encoder.predict(X_test)
 
-    # # Concatena media e varianza lungo l'asse delle colonne
-    # # Questo creerà un array con la media seguita dalla varianza per ogni dimensione latente
-    # z_train_combined = np.concatenate([z_mean_train, z_log_var_train], axis=1)
-    # z_test_combined = np.concatenate([z_mean_test, z_log_var_test], axis=1)
+    # Concatena media e varianza lungo l'asse delle colonne
+    # Questo creerà un array con la media seguita dalla varianza per ogni dimensione latente
+    z_train_combined = np.concatenate([z_mean_train, z_log_var_train], axis=1)
+    z_test_combined = np.concatenate([z_mean_test, z_log_var_test], axis=1)
     
-    # # Convertili in un dataframe per facilità di salvataggio
-    # # Per chiarezza, nominiamo le colonne come "mean_0", "mean_1", ..., "var_0", "var_1", ...
-    # columns_train = [f"mean_{i}" for i in range(z_mean_train.shape[1])] + [f"var_{i}" for i in range(z_log_var_train.shape[1])]
-    # latent_space_train_df = pd.DataFrame(z_train_combined, columns=columns_train)
+    # Convertili in un dataframe per facilità di salvataggio
+    # Per chiarezza, nominiamo le colonne come "mean_0", "mean_1", ..., "var_0", "var_1", ...
+    columns_train = [f"mean_{i}" for i in range(z_mean_train.shape[1])] + [f"var_{i}" for i in range(z_log_var_train.shape[1])]
+    latent_space_train_df = pd.DataFrame(z_train_combined, columns=columns_train)
 
-    # columns_test = [f"mean_{i}" for i in range(z_mean_test.shape[1])] + [f"var_{i}" for i in range(z_log_var_test.shape[1])]
-    # latent_space_test_df = pd.DataFrame(z_test_combined, columns=columns_test)
+    columns_test = [f"mean_{i}" for i in range(z_mean_test.shape[1])] + [f"var_{i}" for i in range(z_log_var_test.shape[1])]
+    latent_space_test_df = pd.DataFrame(z_test_combined, columns=columns_test)
 
-    # # Crea il percorso completo del file
-    # full_path_train = os.path.join(output_dir, "z_train2.csv")
-    # full_path_test = os.path.join(output_dir, "z_test2.csv")
+    # Crea il percorso completo del file
+    full_path_train = os.path.join(output_dir, "z_train2.csv")
+    full_path_test = os.path.join(output_dir, "z_test2.csv")
 
-    # # Salva il dataframe in formato CSV
-    # latent_space_train_df.to_csv(full_path_train, index=False)
-    # latent_space_test_df.to_csv(full_path_test, index=False)
+    # Salva il dataframe in formato CSV
+    latent_space_train_df.to_csv(full_path_train, index=False)
+    latent_space_test_df.to_csv(full_path_test, index=False)

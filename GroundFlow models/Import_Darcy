@@ -92,15 +92,16 @@ def read_data(path_data, added_SNR):
         data_mean = np.load(path_data + '/data_mean.npy')
         data_std = np.load(path_data + '/data_std.npy')
 
-    # Normalizzazione sicura: evitare divisioni per zero
-    data_std[data_std == 0] = 1  # Evita divisioni per 0
     X_noise = (X_noise - data_mean) / data_std
+
+    print("Data Mean (Training set):", data_mean)
+    print("Data Std (Training set):", data_std)
 
     return X_noise, labels, N_ist
 
 
 
-def plot_histogram(X_noise, column_index=0, bins=80):
+def plot_histogram(X_noise, column_index, bins):
     data = X_noise[:, column_index]  # Estrai la colonna desiderata
 
     # Calcola media e deviazione standard per verifica
@@ -165,4 +166,4 @@ print("Shape std:", std.shape)
 print("Tipo di dati:", std.dtype)
 
 
-plot_histogram(X_train, column_index=4, bins=50)
+plot_histogram(labels_train, column_index=3, bins=50)

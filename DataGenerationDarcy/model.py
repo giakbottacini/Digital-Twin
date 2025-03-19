@@ -28,13 +28,20 @@ class Model:
         
         # Compute the eigenpairs of the covariance matrix in the random process.
         self.random_process.compute_eigenpairs()
+
+        self.random_process.plot_eigenvalues()
+
+        
         
     def solve(self, parameters = None):
+
+        self.random_process.plot_eigenvalues()
         
         # Solve the problem, given a vector of modes.
         self.random_process.generate(parameters)
         self.parameters = self.random_process.parameters
         self.solver.set_conductivity(self.random_process.random_field)
+        # self.solver.set_conductivity(parameters)
         self.solver.solve()
         
         
@@ -58,7 +65,7 @@ class Model:
         
     def plot(self, limits = [0,0], transform_field = False):
         
-        # This method plots both the random firld and the solution.
+        # This method plots both the random field and the solution.
         
         # First, contruct a random field, given the field parameters.
         if transform_field:

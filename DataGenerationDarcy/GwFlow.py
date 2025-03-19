@@ -97,6 +97,63 @@ class GwFlowSolver:
         # Map the random field vector to the domain.
         self.K = Function(self.V)
         self.K.vector().set_local(self.conductivity[self.d2v])
+
+    
+
+    # def set_conductivity(self, parameters, num_zones=9):
+    #     """
+    #     Imposta il campo di conduttività suddividendo il dominio quadrato (0,1)x(0,1) in 9 zone.
+    #     Ogni zona avrà un valore di conduttività aleatorio.
+
+    #     :param random_field: opzionale, campo aleatorio generato (se fornito)
+    #     :param num_zones: numero di zone in cui suddividere il dominio (default è 9, che crea una griglia 3x3)
+    #     """
+    #     # Prendi il numero di punti sulla mesh
+    #     num_points = self.mesh.coordinates().shape[0]
+
+    #     # Numero di righe e colonne per la suddivisione 3x3
+    #     rows = 3
+    #     cols = 3
+        
+    #     # Ottieni la dimensione della mesh in X e Y
+    #     x_min, x_max = self.mesh.coordinates()[:, 0].min(), self.mesh.coordinates()[:, 0].max()
+    #     y_min, y_max = self.mesh.coordinates()[:, 1].min(), self.mesh.coordinates()[:, 1].max()
+        
+    #     # Calcola la dimensione di ogni zona
+    #     zone_size_x = (x_max - x_min) / cols
+    #     zone_size_y = (y_max - y_min) / rows
+
+    #     self.conductivity = np.zeros(num_points)
+
+    #     # Crea un valore di conduttività casuale per ciascuna delle 9 zone
+    #     for i in range(rows):
+    #         for j in range(cols):
+    #             # Definisci il valore di conduttività per questa zona
+    #             zone_value = np.exp(self.field_mean + self.field_stdev*parameters[j+3*i])
+                
+    #             # Definisci i limiti della zona nel dominio
+    #             x_min_zone = x_min + j * zone_size_x
+    #             x_max_zone = x_min + (j + 1) * zone_size_x
+    #             y_min_zone = y_min + i * zone_size_y
+    #             y_max_zone = y_min + (i + 1) * zone_size_y
+
+    #             # print(f"x_min_zone: {x_min_zone}")
+    #             # print(f"x_max_zone: {x_max_zone}")
+    #             # print(f"y_min_zone: {y_min_zone}")
+    #             # print(f"y_max_zone: {y_max_zone}")
+                
+    #             # Assegna il valore di conduttività a tutti i punti che appartengono a questa zona
+    #             # Per ogni punto nella mesh, verifica se rientra nell'area della zona
+    #             for idx, coord in enumerate(self.mesh.coordinates()):
+    #                 x, y = coord
+    #                 if x_min_zone <= x < x_max_zone and y_min_zone <= y < y_max_zone:
+    #                     self.conductivity[idx] = zone_value
+    #                     # print(f"Zone: {j+3*i}, Index:{idx}, Coord:{x,y}, Valore:{zone_value}")
+
+    #     # Mappa il campo di conduttività sul dominio della mesh
+    #     self.K = Function(self.V)
+    #     self.K.vector().set_local(self.conductivity[self.d2v])
+
     
     def solve(self):
         # info(LinearVariationalSolver.default_parameters(), True)

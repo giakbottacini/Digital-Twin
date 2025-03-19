@@ -75,9 +75,6 @@ latent_dim = 4
 n_class = 6
 
 
-def RMS(signal):
-    return np.sqrt(np.mean(signal**2))
-
 
 # Read data and create dataset
 def read_data(path_data, train):    
@@ -88,7 +85,7 @@ def read_data(path_data, train):
     labels_level     = np.genfromtxt(label_path_level)
     
     # Filtra gli indici con damage_class diversa da 0
-    valid_indices = np.where(labels_class != 0)[0]
+    valid_indices = np.arange(len(labels_class))
     N_ist = len(valid_indices)  # Usa solo gli indici validi
 
     # Importiamo i valori generati dal VAE
@@ -103,50 +100,16 @@ def read_data(path_data, train):
     # Creazione dei vettori di label di 7 elementi
     labels_vector = np.zeros((N_ist, n_class))  # Vettore di etichette a 7 classi
     
-    for i, idx in enumerate(valid_indices):
-        # Inserisci il damage_level nella posizione corretta in base alla classe di danno
-        damage_class = labels_class[idx] - 1  # Mappiamo la classe 1 su 0, 2 su 1, ecc.
-        damage_level = labels_level[idx]
-        labels_vector[i][damage_class] = damage_level - 0.25
-
-    return Z, labels_vector, N_ist
-
-def read_data(path_data, train):    
-    label_path_class = path_data + '/Damage_class.csv'                                
-    labels_class     = np.genfromtxt(label_path_class)
-    labels_class     = labels_class.astype('int')
-    label_path_level = path_data + '/Damage_level.csv'                                
-    labels_level     = np.genfromtxt(label_path_level)
-    
-    # Filtra gli indici con damage_class diversa da 0
-    valid_indices = np.where(labels_class != 0)[0]
-    N_ist = len(valid_indices)  # Usa solo gli indici validi
-
-    # Importiamo i valori generati dal VAE
-    if train:
-        path_data_z = os.path.join(path_z, "z_train2.csv")
-    else:
-        path_data_z = os.path.join(path_z, "z_test2.csv")
-    
-    Z = pd.read_csv(path_data_z, header=0)
-
-    # Creazione dei vettori di label di 7 elementi
-    labels_vector = np.zeros((N_ist, n_class))  # Vettore di etichette a 7 classi
-    
-    for i, idx in enumerate(valid_indices):
-        damage_class = labels_class[idx] - 1  # Mappiamo la classe 1 su 0, 2 su 1, ecc.
-        damage_level = labels_level[idx]
+    for i, val in enumerate(labels_class):
+        damage_class = val - 1  # Mappiamo la classe 1 su 0, 2 su 1, ecc.
+        damage_level = labels_level[i]
         
         if damage_class == -1:  # Se damage_class è 0 (mappato a -1)
             labels_vector[i] = np.zeros(n_class)  # Imposta il vettore con tutti gli zeri
         else:
-            labels_vector[i][damage_class] = damage_level - 0.25  # Inserisci il damage_level nella posizione corretta
-    
+            labels_vector[i][damage_class] = damage_level #- 0.2  # Inserisci il damage_level nella posizione corretta
+
     return Z, labels_vector, N_ist
-
-
-
-
 
 
 #---------------------------------------------------------------------------------------------------------------
@@ -180,68 +143,11 @@ b_reg = 1e-3
 rate_drop = 0.05
 
 
-# Struttura senza Dropout  
-# def Coupling(input_shape=latent_dim, num_classes=n_class):
-#     # Input per il vettore latente Z di dimensione 4
-#     input_z = layers.Input(shape=(latent_dim,), name='Input_Z')
-#     # Input per il vettore di label condizionale di dimensione num_classes
-#     input_l = layers.Input(shape=(num_classes,), name='Input_Label')
-    
-#     # Network per condizionare s e t in funzione del label y
-#     # Uso un piccolo MLP per una rappresentazione più complessa dell'embedding delle classi
-#     label_condition = layers.Dense(32, activation='relu')(input_l)
-#     label_condition = layers.Dense(64, activation='relu')(label_condition)
-#     label_embedding = layers.Dense(128, activation='relu')(label_condition) 
 
 
-#     # Livelli densi per la componente t (traslazione) con condizionamento MLP
-#     t = layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(reg))(input_z)
-#     t_embedding = layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
-#     t = layers.Concatenate()([t, t_embedding])  # Condizionamento con il label embedding
-#     t = layers.Dense(latent_dim, activation="linear", kernel_regularizer=regularizers.l2(reg))(t)
-
-#     # Livelli densi per la componente s (scalatura) con condizionamento MLP
-#     s = layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(reg))(input_z)
-#     s_embedding = layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
-#     s = layers.Concatenate()([s, s_embedding])  # Condizionamento con il label embedding
-#     s = layers.Dense(latent_dim, activation="tanh", kernel_regularizer=regularizers.l2(reg))(s)
-
-#     return keras.Model(inputs=[input_z, input_l], outputs=[s, t])
-
-
-# def Coupling(input_shape=latent_dim, num_classes=n_class, reg=0.01, dropout_rate=0.3):
-#     # Input per il vettore latente Z di dimensione 4
-#     input_z = layers.Input(shape=(latent_dim,), name='Input_Z')
-#     # Input per il vettore di label condizionale di dimensione num_classes
-#     input_l = layers.Input(shape=(num_classes,), name='Input_Label')
-
-#     # Network per condizionare s e t in funzione del label y
-#     label_condition = layers.Dense(32, activation='relu')(input_l)
-#     label_condition = layers.Dense(64, activation='relu')(label_condition)
-#     label_embedding = layers.Dense(128, activation='relu')(label_condition) 
-
-#     # Livelli densi per la componente t (traslazione) con condizionamento MLP
-#     t = layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(reg))(input_z)
-#     t = layers.Dropout(dropout_rate)(t)  # Aggiungi Dropout
-#     t_embedding = layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
-#     t = layers.Concatenate()([t, t_embedding])  # Condizionamento con il label embedding
-#     t = layers.Dense(latent_dim, activation="linear", kernel_regularizer=regularizers.l2(reg))(t)
-
-#     # Livelli densi per la componente s (scalatura) con condizionamento MLP
-#     s = layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(reg))(input_z)
-#     s = layers.Dropout(dropout_rate)(s)  # Aggiungi Dropout
-#     s_embedding = layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
-#     s = layers.Concatenate()([s, s_embedding])  # Condizionamento con il label embedding
-#     s = layers.Dense(latent_dim, activation="tanh", kernel_regularizer=regularizers.l2(reg))(s)
-
-#     return keras.Model(inputs=[input_z, input_l], outputs=[s, t])
-
-
-
-
-def Coupling(input_shape=latent_dim, num_classes=n_class, reg=0.001, dropout_rate=0.1):
+def Coupling(input_shape=latent_dim, num_classes=n_class, reg=0.005, dropout_rate=0.1):
     # Input per il vettore latente Z di dimensione 4
-    input_z = layers.Input(shape=(latent_dim,), name='Input_Z')
+    input_z = layers.Input(shape=(input_shape,), name='Input_Z')
     # Input per il vettore di label condizionale di dimensione num_classes
     input_l = layers.Input(shape=(num_classes,), name='Input_Label')
 
@@ -253,26 +159,22 @@ def Coupling(input_shape=latent_dim, num_classes=n_class, reg=0.001, dropout_rat
     # Livelli densi per la componente t (traslazione) con condizionamento MLP
     t = layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(reg))(input_z)
     t = layers.Dropout(dropout_rate)(t)  # Aggiungi Dropout
-    t_embedding = layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+    t_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
     t = layers.Concatenate()([t, t_embedding])  # Condizionamento con il label embedding
-    t = layers.Dense(32, activation="relu", kernel_regularizer=regularizers.l2(reg))(t)
+    t = layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(reg))(t)
     t = layers.Dense(latent_dim, activation="linear", kernel_regularizer=regularizers.l2(reg))(t)
 
     # Livelli densi per la componente s (scalatura) con condizionamento MLP
     s = layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(reg))(input_z)
     s = layers.Dropout(dropout_rate)(s)  # Aggiungi Dropout
-    s_embedding = layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+    s_embedding = layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
     s = layers.Concatenate()([s, s_embedding])  # Condizionamento con il label embedding
-    s = layers.Dense(32, activation="relu", kernel_regularizer=regularizers.l2(reg))(s)
+    s = layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(reg))(s)
     s = layers.Dense(latent_dim, activation="tanh", kernel_regularizer=regularizers.l2(reg))(s)
 
     return keras.Model(inputs=[input_z, input_l], outputs=[s, t])
 
 
-
-
-
-    
 
 """
 ## Real NVP
@@ -401,7 +303,7 @@ class RealNVP(keras.Model):
 
         log_likelihood = log_likelihood_z + log_det_inv
 
-        return 8*log_likelihood
+        return log_likelihood
 
 
     @tf.function(jit_compile=True)  # Abilita XLA per la compilazione JIT
@@ -435,7 +337,9 @@ class RealNVP(keras.Model):
 #---------------------------------------------------------------------------------------------------------------------------------
 
 # Creazione dell'istanza RealNVP
-NVP = RealNVP(num_coupling_layers=14, num_classes=n_class)
+NVP = RealNVP(num_coupling_layers=16, num_classes=n_class)
+
+NVP.build([(None, latent_dim), (None, n_class)])
 
 # Caricamento dei pesi salvati
 NVP.load_weights('./models/NVP_for_MCMC.weights.h5')
@@ -465,8 +369,8 @@ class RealNVPTF(Op):
         # Ricevi i numpy array e forza float64 per ogni operazione
         data, label_vector = inputs
 
-        # Imposta a 0 i valori tra 0 e 0.05 nel vettore delle label
-        label_vector[label_vector < 0.05] = 0.0
+        # # Imposta a 0 i valori tra 0 e 0.05 nel vettore delle label
+        # label_vector[label_vector < 0.3] = 0.0
 
         # Assicurati che anche l'input al modello NVP sia in formato float64
         label_vector_eval = np.expand_dims(label_vector, axis=0).astype(np.float64)  # (batch_size, n_class)
@@ -483,9 +387,16 @@ class RealNVPTF(Op):
 real_nvp_tf_op = RealNVPTF(NVP)
 
 # Definisci la funzione di log-likelihood che userai in PyMC
-def realnvp_logp(data, label_vector):
+def realnvp_logp(label_vector, z_mean, sigma):
+    # Conversione esplicita in TensorVariable
+    z_mean = pt.as_tensor_variable(z_mean, dtype='float64')
+    sigma = pt.as_tensor_variable(sigma, dtype='float64')
+
+    # Genera un array di numeri casuali da una distribuzione normale
+    sampled_data = pt.random.normal(loc=z_mean, scale=sigma, size=(z_mean.shape[0],))
+
     # Converte i dati e label_vector in float64 prima di passare all'Op personalizzato
-    return real_nvp_tf_op(data.astype(np.float64), label_vector.astype(np.float64))
+    return real_nvp_tf_op(sampled_data.astype(np.float64), label_vector.astype(np.float64))
 
 
 # Funzione che esegue l'inferenza MCMC usando Metropolis-Hastings
@@ -493,33 +404,25 @@ def mcmc_classification_pymc(z_mean, z_log_var, num_iterations):
     with pm.Model() as model:
         # Definiamo una distribuzione a priori per il vettore di label
         # label_vector = pm.Normal("label_vector", mu=0, sigma=1, shape=(n_class,))
-        label_vector = pm.Uniform('label_vector', lower=0, upper=0.55, shape=(n_class,))
+        label_vector = pm.Uniform('label_vector', lower=0, upper=0.8, shape=(n_class,))
         # label_vector = pm.Beta('label_vector', alpha=2, beta=5, shape=(n_class,))
         # label_vector = pm.Exponential('label_vector', lam=1/0.7, shape=(n_class,))
 
         # Calcola la deviazione standard dalla log-varianza
         sigma = pm.math.exp(0.5 * z_log_var)  # Deviance standard
         # Genera i nuovi dati campionando dalla distribuzione normale
-        sampled_data = pm.Normal('sampled_data', mu=z_mean, sigma=sigma, shape=(len(z_mean),))
+        # sampled_data = pm.Normal('sampled_data', mu=z_mean, sigma=sigma, shape=(len(z_mean),))
 
         # Usa pm.Potential per integrare la log-likelihood calcolata esternamente
-        loglikelihood = pm.Potential("loglikelihood", realnvp_logp(sampled_data, label_vector))
+        pm.Potential("realnvp_loglikelihood", realnvp_logp(label_vector, z_mean, sigma))
 
         # Eseguiamo l'inferenza MCMC usandoset Metropolis-Hastings
         # step = pm.Metropolis()  # Usa Metropolis-Hastings come algoritmo di campionamento
         # Usare DE-Metropolis come algoritmo di campionamento
         # step = pm.DEMetropolis()
 
-        step = pm.DEMetropolisZ(scaling=0.1, tune_interval=300)
-        trace = pm.sample(num_iterations, cores=1, chains=2, step=step, tune=15000 , return_inferencedata=True)
-
-        # Parametri di results_sampled_2
-        # step = pm.DEMetropolisZ(scaling=0.0003, tune_interval=750)
-        # trace = pm.sample(num_iterations, cores=1, chains=2, step=step, tune=15000 , return_inferencedata=True)
-        # Parametri di results_sampled e del 4
-        # step = pm.DEMetropolisZ(scaling=0.0003, tune_interval=80)
-        # trace = pm.sample(num_iterations, cores=1, chains=2, step=step, tune=10000 , return_inferencedata=True)
-
+        step = pm.DEMetropolisZ(scaling=0.1, tune_interval=200)
+        trace = pm.sample(num_iterations, cores=1, chains=2, step=step, tune=20000 , return_inferencedata=True)
 
         # Riepilogo del campionamento
         summary = az.summary(trace)
@@ -646,8 +549,8 @@ def append_results_to_csv(file_name, idx, true_label, samples_mcmc):
         hpdi = calculate_hpdi(samples_mcmc)
 
         # Imposta a 0 i valori inferiori a 0.05 per mean e mode
-        label_estimate_mean[label_estimate_mean < 0.05] = 0.0
-        label_estimate_mode[label_estimate_mode < 0.05] = 0.0
+        label_estimate_mean[label_estimate_mean < 0.3] = 0.0
+        label_estimate_mode[label_estimate_mode < 0.3] = 0.0
 
         # # Calcola le metriche di performance
         # metrics = calculate_performance_metrics(true_label, label_estimate_mean, label_estimate_mode)
@@ -848,8 +751,8 @@ def calculate_metrics_mean(true_label_array, label_estimate_mean_array, label_es
         smape_mode_array.append(smape_mode)
 
         # NRMSE per ogni istanza
-        nrmse_mean = rmse_mean / (np.max(true_label) + 0.25 - np.min(true_label))
-        nrmse_mode = rmse_mode / (np.max(true_label) + 0.25 - np.min(true_label))
+        nrmse_mean = rmse_mean / (np.max(true_label) - np.min(true_label))
+        nrmse_mode = rmse_mode / (np.max(true_label) - np.min(true_label))
         nrmse_mean_array.append(nrmse_mean)
         nrmse_mode_array.append(nrmse_mode)
 
@@ -892,8 +795,8 @@ def calcola_medie_normalizzate_dataset(vettori):
         media_altri = np.mean(altri_elementi)
 
         # Normalizza le due medie rispetto al valore massimo
-        media_vicini_normalizzata = media_vicini / valore_max
-        media_altri_normalizzata = media_altri / valore_max
+        media_vicini_normalizzata = media_vicini #/ valore_max
+        media_altri_normalizzata = media_altri #/ valore_max
 
         # Aggiungi le medie normalizzate alle liste totali
         media_vicini_normalizzata_totale.append(media_vicini_normalizzata)
@@ -906,126 +809,6 @@ def calcola_medie_normalizzate_dataset(vettori):
     return media_vicini_finale, media_altri_finale
 
 
-
-
-
-# def analyze_damage_levels(csv_file_name):
-#     # Carica i dati dal file CSV
-#     df = pd.read_csv(csv_file_name)
-    
-#     # Estrai le colonne necessarie
-#     true_labels = df['True Label'].apply(lambda x: np.fromstring(x, sep=',')).to_list()
-#     mean_labels = df['Mean Estimate'].apply(lambda x: np.fromstring(x, sep=',')).to_list()
-#     mode_labels = df['Mode Estimate'].apply(lambda x: np.fromstring(x, sep=',')).to_list()
-
-#     # Converti in array NumPy per un'elaborazione più semplice
-#     true_labels = np.array(true_labels)
-#     mean_labels = np.array(mean_labels)
-#     mode_labels = np.array(mode_labels)
-
-#     # Funzione per estrarre il livello di danno dalla classe giusta
-#     def get_damage_level(label):
-#         # Trova l'indice dove c'è il livello di danno non nullo (classe con danno massimo)
-#         damage_index = np.argmax(label)
-#         return label[damage_index], damage_index  # Restituisci il livello di danno e l'indice della classe
-
-#     # Funzione per trovare la seconda classe con il livello di danno più alto
-#     def get_second_highest_class(label):
-#         sorted_indices = np.argsort(label)  # Ordina gli indici in base ai valori crescenti
-#         second_highest_index = sorted_indices[-2]  # Il secondo più alto è il penultimo nell'array ordinato
-#         return second_highest_index
-
-#     # Analizza i livelli di danno
-#     true_damage_levels = np.array([get_damage_level(label)[0] for label in true_labels])  # Ottieni i livelli di danno reali
-#     true_classes = np.array([get_damage_level(label)[1] for label in true_labels])  # Ottieni le classi reali
-
-#     predicted_damage_levels_mean = np.array([mean_labels[i][true_classes[i]] for i in range(len(mean_labels))])
-#     predicted_damage_levels_mode = np.array([mode_labels[i][true_classes[i]] for i in range(len(mode_labels))])
-
-#     # Calcola MAE (Errore Assoluto Medio)
-#     mae_mean = np.mean(np.abs(predicted_damage_levels_mean - true_damage_levels))
-#     mae_mode = np.mean(np.abs(predicted_damage_levels_mode - true_damage_levels))
-
-#     # Calcola l'errore relativo rispetto al livello di danno reale (variazione proporzionale)
-#     relative_error_mean = np.mean(np.abs(predicted_damage_levels_mean - true_damage_levels) / (true_damage_levels+0.25))
-#     relative_error_mode = np.mean(np.abs(predicted_damage_levels_mode - true_damage_levels) / (true_damage_levels+0.25))
-
-#     # Calcola la distanza tra la classe con il danno massimo e la seconda classe più alta
-#     distances = []
-#     for label in true_labels:
-#         damage_index = get_damage_level(label)[1]
-#         second_highest_index = get_second_highest_class(label)
-#         distance = abs(damage_index - second_highest_index)  # Distanza tra la prima e la seconda classe
-#         distances.append(distance)
-    
-#     mean_distance = np.mean(distances)  # Media delle distanze
-
-#     # Converti le colonne 'True Label', 'Mean Estimate' e 'Mode Estimate' da stringhe a array di float
-#     df['True Label'] = df['True Label'].apply(lambda x: np.array(list(map(float, x.split(',')))))
-#     df['Mean Estimate'] = df['Mean Estimate'].apply(lambda x: np.array(list(map(float, x.split(',')))))
-#     df['Mode Estimate'] = df['Mode Estimate'].apply(lambda x: np.array(list(map(float, x.split(',')))))
-
-#     # Ottieni le classi vere e quelle stimate (media e moda)
-#     true_classes = df['True Label'].apply(get_predicted_class).values +1 
-#     mean_predicted_classes = df['Mean Estimate'].apply(get_predicted_class).values +1
-#     mode_predicted_classes = df['Mode Estimate'].apply(get_predicted_class).values +1
-
-#     # Calcola metriche per predizioni con media
-#     accuracy_mean = accuracy_score(true_classes, mean_predicted_classes)
-#     precision_mean = precision_score(true_classes, mean_predicted_classes, average='weighted')
-#     recall_mean = recall_score(true_classes, mean_predicted_classes, average='weighted')
-#     f1_mean = f1_score(true_classes, mean_predicted_classes, average='weighted')
-#     conf_matrix_mean = confusion_matrix(true_classes, mean_predicted_classes)
-
-#     # Calcola metriche per predizioni con moda
-#     accuracy_mode = accuracy_score(true_classes, mode_predicted_classes)
-#     precision_mode = precision_score(true_classes, mode_predicted_classes, average='weighted')
-#     recall_mode = recall_score(true_classes, mode_predicted_classes, average='weighted')
-#     f1_mode = f1_score(true_classes, mode_predicted_classes, average='weighted')
-#     conf_matrix_mode = confusion_matrix(true_classes, mode_predicted_classes)
-
-#     # Cosine Similarity
-#     cosine_sim_mean = cosine_similarity_media(true_labels, mean_labels)
-#     cosine_sim_mode = cosine_similarity_media(true_labels, mode_labels)
-
-#     # RMSE, SMAPE, NRMSE
-#     rmse_mean_avg, rmse_mode_avg, smape_mean_avg, smape_mode_avg, nrmse_mean_avg, nrmse_mode_avg = calculate_metrics_mean(true_labels, mean_labels, mode_labels)
-
-#     # Confronto vicini e lontani
-#     media_vicini_mean, media_altri_mean = calcola_medie_normalizzate_dataset(mean_labels)
-#     media_vicini_mode, media_altri_mode = calcola_medie_normalizzate_dataset(mode_labels)
-
-
-#     # Stampa dei risultati
-#     print(f"Errore Assoluto Medio (Media): {mae_mean:.4f}")
-#     print(f"Errore Assoluto Medio (Moda): {mae_mode:.4f}")
-#     print(f"Errore Relativo Medio (Media): {relative_error_mean:.4f}")
-#     print(f"Errore Relativo Medio (Moda): {relative_error_mode:.4f}")
-
-#     print(f"Accuracy Medio (Media): {accuracy_mean:.4f}")
-#     print(f"Precision Medio (Media): {precision_mean:.4f}")
-#     print(f"Recall Medio (Media): {recall_mean:.4f}")
-#     print(f"F1 Medio (Media): {f1_mean:.4f}")
-
-#     print(f"Accuracy Medio (Moda): {accuracy_mode:.4f}")
-#     print(f"Precision Medio (Moda): {precision_mode:.4f}")
-#     print(f"Recall Medio (Moda): {recall_mode:.4f}")
-#     print(f"F1 Medio (Moda): {f1_mode:.4f}")
-
-#     print(f"Cosine Similarity Medio (Media): {cosine_sim_mean:.4f}")
-#     print(f"Cosine Similarity Medio (Moda): {cosine_sim_mode:.4f}")
-
-#     print(f"RMSE Medio (Media): {rmse_mean_avg:.4f}")
-#     print(f"RMSE Medio (Moda): {rmse_mode_avg:.4f}")
-#     # print(f"SMAPE Medio (Media): {smape_mean_avg:.4f}")
-#     # print(f"SMAPE Medio (Moda): {smape_mode_avg:.4f}")
-#     print(f"NRMSE Medio (Media): {nrmse_mean_avg:.4f}")
-#     print(f"NRMSE Medio (Moda): {nrmse_mode_avg:.4f}")
-
-#     print(f"Media vicini normalizzata (Mean): {media_vicini_mean:.4f} | Media altri normalizzata(Mean):  {media_altri_mean:.4f}")
-#     print(f"Media vicini normalizzata (Mode): {media_vicini_mode:.4f} | Media altri normalizzata(Mode):  {media_altri_mode:.4f}")
-
-#     print(f"Media della distanza tra prima e seconda classe più alta: {mean_distance:.4f}")
 
 
 def analyze_damage_levels(csv_file_name):
@@ -1046,6 +829,9 @@ def analyze_damage_levels(csv_file_name):
 
     # Funzione per estrarre il livello di danno dalla classe giusta
     def get_damage_level(label):
+        # Controlla se tutte le classi sono sotto 0.3
+        if np.all(label < 0.3):
+            return 0, -1  # Nessun danno rilevante
         damage_index = np.argmax(label)  # Indice della classe con danno massimo
         return label[damage_index], damage_index
 
@@ -1053,8 +839,16 @@ def analyze_damage_levels(csv_file_name):
     true_damage_levels = np.array([get_damage_level(label)[0] for label in true_labels])  # Livelli di danno reali
     true_classes = np.array([get_damage_level(label)[1] for label in true_labels])  # Classi reali
 
-    predicted_damage_levels_mean = np.array([mean_labels[i][true_classes[i]] for i in range(len(mean_labels))])
-    predicted_damage_levels_mode = np.array([mode_labels[i][true_classes[i]] for i in range(len(mode_labels))])
+    # Calcola i livelli di danno predetti
+    predicted_damage_levels_mean = np.array([
+        np.max(mean_labels[i]) if true_classes[i] == -1 else mean_labels[i][true_classes[i]]
+        for i in range(len(mean_labels))
+    ])
+
+    predicted_damage_levels_mode = np.array([
+        np.max(mode_labels[i]) if true_classes[i] == -1 else mode_labels[i][true_classes[i]]
+        for i in range(len(mode_labels))
+    ])
 
     # Calcola MAE
     mae_mean = np.mean(np.abs(predicted_damage_levels_mean - true_damage_levels))
@@ -1064,13 +858,35 @@ def analyze_damage_levels(csv_file_name):
     media_vicini_mode, media_altri_mode = calcola_medie_normalizzate_dataset(mode_labels)
 
     # Errore relativo
-    relative_error_mean = np.mean(np.abs(predicted_damage_levels_mean - true_damage_levels) / (true_damage_levels + 0.25))
-    relative_error_mode = np.mean(np.abs(predicted_damage_levels_mode - true_damage_levels) / (true_damage_levels + 0.25))
+    # relative_error_mean = np.mean(np.abs(predicted_damage_levels_mean - true_damage_levels) / (true_damage_levels + 0.25))
+    # relative_error_mode = np.mean(np.abs(predicted_damage_levels_mode - true_damage_levels) / (true_damage_levels + 0.25))
 
     # Calcola metriche per predizioni con media
+
+    mean_predicted_classes = np.array([
+        0 if np.all(mean_label < 0.3) else np.argmax(mean_label) + 1
+        for mean_label in mean_labels
+    ])
+
+    mode_predicted_classes = np.array([
+        0 if np.all(mode_label < 0.3) else np.argmax(mode_label) + 1
+        for mode_label in mode_labels
+    ])
+
     true_classes_adjusted = true_classes + 1  # Per correggere la numerazione se necessario
-    mean_predicted_classes = np.array([np.argmax(mean_label) + 1 for mean_label in mean_labels])
-    mode_predicted_classes = np.array([np.argmax(mode_label) + 1 for mode_label in mode_labels])
+
+    print(f"Forma di true_classes_adjusted: {true_classes_adjusted.shape}")
+    print(f"Forma di mean_predicted_classes: {mean_predicted_classes.shape}")
+
+    # Calcola la confusion matrix
+    cm = confusion_matrix(true_classes_adjusted, mean_predicted_classes)
+
+    # Visualizza la confusion matrix come heatmap
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=np.unique(true_classes), yticklabels=np.unique(true_classes))
+    plt.xlabel('Predicted')
+    plt.ylabel('True')
+    plt.title('Confusion Matrix')
+    plt.show()
 
     accuracy_mean = accuracy_score(true_classes_adjusted, mean_predicted_classes)
     precision_mean = precision_score(true_classes_adjusted, mean_predicted_classes, average='weighted')
@@ -1094,8 +910,8 @@ def analyze_damage_levels(csv_file_name):
     # Stampa dei risultati
     print(f"Errore Assoluto Medio (Media): {mae_mean:.4f}")
     print(f"Errore Assoluto Medio (Moda): {mae_mode:.4f}")
-    print(f"Errore Relativo Medio (Media): {relative_error_mean:.4f}")
-    print(f"Errore Relativo Medio (Moda): {relative_error_mode:.4f}")
+    # print(f"Errore Relativo Medio (Media): {relative_error_mean:.4f}")
+    # print(f"Errore Relativo Medio (Moda): {relative_error_mode:.4f}")
 
     print(f"Accuracy Medio (Media): {accuracy_mean:.4f}")
     print(f"Precision Medio (Media): {precision_mean:.4f}")
@@ -1116,8 +932,6 @@ def analyze_damage_levels(csv_file_name):
     print("\nDeviazione standard media per ciascun 'True Label' distinto:")
     for label, mean_std in mean_std_dev_per_class.items():
         print(f"True Label {label}: Media deviazione standard = {mean_std:.4f}")
-
-
 
 
 
@@ -1176,12 +990,12 @@ print(f"Vero label: {true_label}")
 
 # Visualizzazione dei risultati con istogrammi
 num_labels = true_label.shape[0]
-plt.figure(figsize=(15, 10))
 
+plt.figure(figsize=(15, 10))
 
 for i in range(num_labels):
     plt.subplot(2, 4, i + 1)  # Crea una griglia di 2 righe e 4 colonne
-    plt.hist(accepted_labels[i, :], bins=50, alpha=0.7, color='blue', edgecolor='black', range=(0,0.55))
+    plt.hist(accepted_labels[i, :], bins=50, alpha=0.7, color='blue', edgecolor='black', range=(0,0.8))
     plt.title(f'Class {i + 1}\nTrue label: {true_label[i]:.2f}',fontsize=16)
     plt.xlabel('Valore',fontsize=14)
     plt.ylabel('Frequenza',fontsize=14)
@@ -1200,6 +1014,22 @@ plt.show()
 
 
 
+# Seleziona la componente da tracciare
+components_to_plot = [2]
+
+plt.figure(figsize=(10, 6))
+
+for i in components_to_plot:
+    plt.plot(accepted_labels[i, 0:20000], label=f'Component {i}')
+
+plt.xlabel('Iteration')
+plt.ylabel('Parameter Value')
+plt.title('MCMC Trace for Selected Label Vector Components')
+plt.legend()
+plt.show()
+
+
+
 
 """
 ## Creazione .csv
@@ -1208,7 +1038,7 @@ plt.show()
 n_iter = 20000 
 
 # Nome del file CSV dove salvare i risultati
-csv_file_name = 'mcmc_results_sampled_5.csv'
+csv_file_name = 'mcmc_results_sampled_2.csv'
 
 # Numero di iterazioni
 num_iterations = 0
@@ -1274,10 +1104,10 @@ print(f"Risultati salvati nel file {csv_file_name} dopo {num_iterations} iterazi
 # medie_parametri = calcola_media_parametri('mcmc_results_3.csv')
 
 
-# # Esegui la funzione con il file CSV contenente i risultati
-# csv_file_name = 'mcmc_results_sampled_5.csv'
-# # create_confusion_matrix(csv_file_name)
-# analyze_damage_levels(csv_file_name)
+# Esegui la funzione con il file CSV contenente i risultati
+csv_file_name = 'mcmc_results_sampled_2.csv'
+# create_confusion_matrix(csv_file_name)
+analyze_damage_levels(csv_file_name)
 
 # update_performance_metrics_from_file('mcmc_results.csv', 'mcmc_results_1.csv')
 

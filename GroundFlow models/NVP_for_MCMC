@@ -35,16 +35,11 @@ path_restore  = '../DataGenerationDarcy/data/'
 path_z = "output_VAE_for_MCMC"
 
 seq_len = 25
-n_params = 16
+n_params = 4 #6 #9
 
 
 
-latent_dim = 4
-
-# Questa funzione calcola il valore quadratico medio (RMS) di un vettore di segnale, utile per misurare l'energia del segnale e per 
-# aggiungere rumore durante la corruzione dei segnali.
-def RMS(vect):
-    return np.sqrt(np.mean(np.square(vect)))
+latent_dim = 8
 
 
 # ----------------------------------------------------------------------------
@@ -59,6 +54,12 @@ def read_data(path_data, train):
     #Import labels (coeff of KL of the field)
     labels_path = path_data + '/samples_h1_60.csv'
     labels = np.genfromtxt(labels_path, delimiter=',', dtype=float)
+
+    # Seleziona solo le prime n_params colonne
+    labels = labels[:, :n_params]
+
+    # scaling_factors = np.array([5.93, 4.32, 4.32, 3.15])
+    # scaled_labels = labels * scaling_factors
     
     N_ist = len(labels)  
 
@@ -88,7 +89,7 @@ reg = 0.01
 # Hyperparameters
 validation_split = 0.20
 batch_size = 32
-n_epochs = 350
+n_epochs = 200
 early_stop_epochs=25
 initial_lr = 1e-3
 decay_length = 0.8
@@ -108,31 +109,33 @@ rate_drop = 0.05
 
 
 
-def Coupling(input_shape=latent_dim, num_params=n_params, reg=0.005, dropout_rate=0.1):
+def Coupling(input_shape=latent_dim, num_params=n_params, reg=0.01, dropout_rate=0.2):
     # Input per il vettore latente Z di dimensione 4
     input_z = layers.Input(shape=(input_shape,), name='Input_Z')
     # Input per il vettore di label condizionale di dimensione num_classes
     input_l = layers.Input(shape=(num_params,), name='Input_Label')
 
     # Network per condizionare s e t in funzione del label y
-    label_condition = layers.Dense(32, activation='relu')(input_l)
-    label_condition = layers.Dense(64, activation='relu')(label_condition)
-    label_embedding = layers.Dense(128, activation='relu')(label_condition) 
+    label_condition = layers.Dense(32, activation='elu')(input_l)
+    label_condition = layers.Dropout(dropout_rate)(label_condition)
+    label_condition = layers.Dense(64, activation='elu')(label_condition)
+    label_condition = layers.Dropout(dropout_rate)(label_condition)
+    label_embedding = layers.Dense(128, activation='elu')(label_condition) 
 
     # Livelli densi per la componente t (traslazione) con condizionamento MLP
-    t = layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(reg))(input_z)
+    t = layers.Dense(64, activation="elu", kernel_regularizer=regularizers.l2(reg))(input_z)
     t = layers.Dropout(dropout_rate)(t)  # Aggiungi Dropout
-    t_embedding = layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+    t_embedding = layers.Dense(64, activation='elu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
     t = layers.Concatenate()([t, t_embedding])  # Condizionamento con il label embedding
-    t = layers.Dense(32, activation="relu", kernel_regularizer=regularizers.l2(reg))(t)
+    t = layers.Dense(32, activation="elu", kernel_regularizer=regularizers.l2(reg))(t)
     t = layers.Dense(latent_dim, activation="linear", kernel_regularizer=regularizers.l2(reg))(t)
 
     # Livelli densi per la componente s (scalatura) con condizionamento MLP
-    s = layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(reg))(input_z)
+    s = layers.Dense(64, activation="elu", kernel_regularizer=regularizers.l2(reg))(input_z)
     s = layers.Dropout(dropout_rate)(s)  # Aggiungi Dropout
-    s_embedding = layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+    s_embedding = layers.Dense(64, activation='elu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
     s = layers.Concatenate()([s, s_embedding])  # Condizionamento con il label embedding
-    s = layers.Dense(32, activation="relu", kernel_regularizer=regularizers.l2(reg))(s)
+    s = layers.Dense(32, activation="elu", kernel_regularizer=regularizers.l2(reg))(s)
     s = layers.Dense(latent_dim, activation="tanh", kernel_regularizer=regularizers.l2(reg))(s)
 
     return keras.Model(inputs=[input_z, input_l], outputs=[s, t])
@@ -157,12 +160,12 @@ class RealNVP(keras.Model):
 
         # Distribuzione dello spazio latente di dim 4
         self.distribution = tfp.distributions.MultivariateNormalDiag(
-            loc=[0.0] * 4, scale_diag=[1.0] * 4  # La distribuzione ha 4 dimensioni
+            loc=[0.0] * latent_dim, scale_diag=[1.0] * latent_dim  # La distribuzione ha 4 dimensioni
         )
 
         # Maschere (alterniamo metà delle dimensioni: 2 su 4)
         self.masks = tf.convert_to_tensor(
-            [[0] * 2 + [1] * 2, [1] * 2 + [0] * 2] * (self.num_coupling_layers // 2), dtype=tf.float32
+            [[0] * 4 + [1] * 4, [1] * 4 + [0] * 4] * (self.num_coupling_layers // 2), dtype=tf.float32
         )
 
 
@@ -186,7 +189,7 @@ class RealNVP(keras.Model):
 
         for i in range(self.num_coupling_layers):
 
-            mask = tf.reshape(self.masks[i], [1, 4])  # Aggiungi una dimensione batch
+            mask = tf.reshape(self.masks[i], [1, latent_dim])  # Aggiungi una dimensione batch
             x_masked = x * mask  # Maschera l'input
             reversed_mask = 1 - mask
             s, t = self.layers_list[i]([x_masked, y])
@@ -307,9 +310,9 @@ class RealNVP(keras.Model):
 
 
 
-num_coupling_layers = 20        
+n_coupling_layers = 12       
 
-train_or_predict = 1   # 1: training, 0: predict                                       
+train_or_predict = 0   # 1: training, 0: predict                                       
 
 
 if train_or_predict:
@@ -326,7 +329,7 @@ if train_or_predict:
     print(Z_train[:2])
 
 
-    NVP = RealNVP(num_coupling_layers=num_coupling_layers, num_params=n_params)
+    NVP = RealNVP(num_coupling_layers=n_coupling_layers, num_params=n_params)
 
     NVP.compile(optimizer=keras.optimizers.Adam(learning_rate=keras.optimizers.schedules.CosineDecay(initial_learning_rate=initial_lr, decay_steps=int(decay_length*n_epochs*N_ist_train*(1-validation_split)/batch_size), alpha=ratio_to_stop)))
     NVP.summary()
@@ -461,15 +464,13 @@ else:
 
 
     # Creazione dell'istanza RealNVP
-    NVP = RealNVP(num_coupling_layers=num_coupling_layers, num_params=n_params)
+    NVP = RealNVP(num_coupling_layers=n_coupling_layers, num_params=n_params)
 
     # NVP.compile(optimizer = keras.optimizers.Adam(learning_rate=keras.optimizers.schedules.CosineDecay(initial_learning_rate=initial_lr, decay_steps=int(decay_length*n_epochs*N_ist_test*(1-validation_split)/batch_size), alpha=ratio_to_stop)))
     #Non serve compilare se non devo continuare il training
 
-    # Caricamento dei pesi salvati
     NVP.build([(None, latent_dim), (None, n_params)])
  
-
     # Caricamento dei pesi salvati
     NVP.load_weights('./models/NVP_for_MCMC.weights.h5')
 
@@ -561,9 +562,6 @@ else:
 
 
 
-
-
-
     log_likelihood_test = NVP.predict(Z_test, labels_test)
     log_likelihood_train = NVP.predict(Z_train, labels_train)
 
@@ -587,6 +585,7 @@ else:
     plt.hist(log_likelihood_test_np, bins=100, range=(min(log_likelihood_test_np), max(log_likelihood_test_np)),
             alpha=0.8, color='r', label='Test')
 
+
     # Titolo e etichette
     plt.title('Istogramma sovrapposto delle log-likelihood')
     plt.xlabel('log-likelihood')
@@ -604,15 +603,22 @@ else:
 
 
 
-    labels_wrong = labels_train[:4000,:]
-    # labels_wrong = np.random.permutation(labels_test)
+
+    # np.random.seed(23)  
+    # indices = np.random.permutation(len(X_train))
+
+    # # Applica lo shuffle mantenendo la corrispondenza tra dati e label
+    # X_train = X_train[indices]
+
+    # labels_test_wrong = labels_train[:4000,:]
+    labels_test_wrong = np.random.permutation(labels_test)
 
     log_likelihood_test = NVP.predict(Z_test, labels_test)
-    log_likelihood_wrong = NVP.predict(Z_test, labels_wrong)
+    log_likelihood_wrong = NVP.predict(Z_test, labels_test_wrong)
 
     print(f"Forma di log_likelihood_test: {log_likelihood_test.shape}")
     print(f"Forma di log_likelihood_wrong: {log_likelihood_wrong.shape}")
-    print(f"Forma di labels_wrong: {labels_wrong.shape}")
+    print(f"Forma di labels_test_truncated: {labels_test_wrong.shape}")
 
 
     # Converti i tensori in array NumPy
@@ -624,11 +630,11 @@ else:
     plt.figure(figsize=(8, 6))
 
     # Istogramma del vettore log_likelihood_train
-    plt.hist(log_likelihood_wrong_np, bins=100, range=(2*min(log_likelihood_test_np), 2*max(log_likelihood_test_np)),
+    plt.hist(log_likelihood_wrong_np, bins=100, range=(1.5*min(log_likelihood_test_np), max(log_likelihood_test_np)),
             alpha=0.9, color='r', label='Wrong')
 
     # Istogramma del vettore log_likelihood_test
-    plt.hist(log_likelihood_test_np, bins=100, range=(2*min(log_likelihood_test_np), 2*max(log_likelihood_test_np)),
+    plt.hist(log_likelihood_test_np, bins=100, range=(1.5*min(log_likelihood_test_np), max(log_likelihood_test_np)),
             alpha=0.8, color='b', label='Right')
 
     # Titolo e etichette

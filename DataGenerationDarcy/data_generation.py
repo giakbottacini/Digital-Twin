@@ -21,13 +21,15 @@ def setup_environment():
     """
     np.random.seed(123)
     # n_samples = 128000
-    n_samples = 20000
+    n_samples = 40000
     # resolutions = [(60, 60), (30, 30), (20,20), (15, 15)]
     resolutions = [(60,60)]
-    field_mean, field_stdev, lamb_cov = 1, 1, 0.1
+    field_mean, field_stdev, lamb_cov = 1, 1, 0.4
+    # field_mean, field_stdev, lamb_cov = 1, 0.2, 0.1  #3x3 case
     # mkl_values = [64, 64, 64, 64]
-    mkl_values = [16]   #Number of modes (dominant patterns) i generate (higher->higher variability captured)
-    x_data = y_data = np.array([0.1, 0.3, 0.5, 0.7, 0.9])  # 5 X 5 grid of sensors
+    mkl_values = [64]   #Number of modes (dominant patterns) i generate (higher->higher variability captured)
+    # x_data = y_data = np.array([0.1, 0.3, 0.5, 0.7, 0.9])  # 5 X 5 grid of sensors
+    x_data = y_data = np.array([0.083, 0.249, 0.415, 0.581, 0.747, 0.913])  # 6 X 6 grid of sensors
     # x_data = y_data = np.array([0.25, 0.5, 0.75])  # 3 X 3 grid of sensors
     datapoints = np.array(list(product(x_data, y_data)))  #Sensors's coordinates
     
@@ -56,7 +58,9 @@ def solver_data(solver, datapoints, x):
     return solver.get_data(datapoints)
 
 def generate_samples(mkl_values, n_samples):
+    # n_regions = 9
     return norm_dist(loc=0, scale=1).ppf(lhcs(mkl_values[0], samples=n_samples))
+    # return norm_dist(loc=0, scale=1).ppf(lhcs(n_regions, samples=n_samples))
     
 
 def generate_solver_data(solvers, solver_key, samples, datapoints, path_prefix):
@@ -73,6 +77,13 @@ def generate_solver_data(solvers, solver_key, samples, datapoints, path_prefix):
     
     for i in tqdm(range(n_samples), desc=f"Processing {solver_key} samples"):
         data[i, :] = solver_data(solver, datapoints, samples[i, :])
+
+    # Genera gli indici mescolati
+    indices = np.random.permutation(n_samples)
+
+    # Applica il rimescolamento a samples e data
+    samples_shuffled = samples[indices]
+    data_shuffled = data[indices]
     
     # Split data into training and testing sets
     split_idx = int(0.8 * n_samples)
@@ -81,10 +92,10 @@ def generate_solver_data(solvers, solver_key, samples, datapoints, path_prefix):
     # np.savetxt(f"{path_prefix}/X_test_{solver_key}_60_3.csv", samples[split_idx:], delimiter=",")
     # np.savetxt(f"{path_prefix}/y_test_{solver_key}_60_3.csv", data[split_idx:], delimiter=",")
 
-    np.savetxt(f"{path_prefix}/samples_train_{solver_key}_60.csv", samples[:split_idx], delimiter=",")
-    np.savetxt(f"{path_prefix}/sensorsdata_train_{solver_key}_60.csv", data[:split_idx], delimiter=",")
-    np.savetxt(f"{path_prefix}/samples_test_{solver_key}_60.csv", samples[split_idx:], delimiter=",")
-    np.savetxt(f"{path_prefix}/sensorsdata_test_{solver_key}_60.csv", data[split_idx:], delimiter=",")
+    np.savetxt(f"{path_prefix}/samples_train_{solver_key}_60.csv", samples_shuffled[:split_idx], delimiter=",")
+    np.savetxt(f"{path_prefix}/sensorsdata_train_{solver_key}_60.csv", data_shuffled[:split_idx], delimiter=",")
+    np.savetxt(f"{path_prefix}/samples_test_{solver_key}_60.csv", samples_shuffled[split_idx:], delimiter=",")
+    np.savetxt(f"{path_prefix}/sensorsdata_test_{solver_key}_60.csv", data_shuffled[split_idx:], delimiter=",")
 
 def project_to_pod_basis(coarse_data, n_components=45):
     """

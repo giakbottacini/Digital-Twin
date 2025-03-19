@@ -29,8 +29,8 @@ import arviz as az
 
 
 
-EXPECTED_SHAPE_X = [None, 4]  # La dimensione batch può variare, ma x ha sempre 4 elementi
-EXPECTED_SHAPE_Y = [None, 6]  # La dimensione batch può variare, ma y ha sempre 7 elementi
+# EXPECTED_SHAPE_X = [None, 4]  # La dimensione batch può variare, ma x ha sempre 4 elementi
+# EXPECTED_SHAPE_Y = [None, 6]  # La dimensione batch può variare, ma y ha sempre 7 elementi
 
 import multiprocessing
 
@@ -38,58 +38,38 @@ import multiprocessing
 
 
 
-
-
-
-
-
-
 # Specify the example you are dealing with
-esempio = 'TRAIN_FRAME_DT'
+esempio = 'DARCY_FRAME_DT'
 # Training and Testing data
-ID              = '2_1'
-save_ID         = '/Classifier_total_2_1/'
-path            = "../" + esempio 
-path_data_train   = path + '/istantrain_' + ID
-path_data_test   = path + '/istantest_' + ID
+path_data_train   = '../DataGenerationDarcy/data/data_train'
+path_data_test   = '../DataGenerationDarcy/data/data_test'
 # Saving model
 path_save       = "models/"
-# Prediction model
-restore_ID = '/Classifier_total_2_1/'
-path_restore = path + restore_ID
+#Position of mean and std. deviation
+path_restore  = '../DataGenerationDarcy/data/'
 
 path_z = "output_VAE_for_MCMC"
 
-# Which dof monitored
-which_channels = [1,2,3,4,5,6,7,8,9,10]
-
-n_channels = 10
-seq_len = 600
-# Specify if you are using accelerations =1 or displacements =0
-accelerations = 0
+seq_len = 25
+n_params = 4 #6 #9
 
 
-latent_dim = 4
-
-# Number of classes in the dataset
-n_class = 6
-
-
-def RMS(signal):
-    return np.sqrt(np.mean(signal**2))
+latent_dim = 8
 
 
 # Read data and create dataset
-def read_data(path_data, train):    
-    label_path_class = path_data + '/Damage_class.csv'                                
-    labels_class     = np.genfromtxt(label_path_class)
-    labels_class     = labels_class.astype('int')
-    label_path_level = path_data + '/Damage_level.csv'                                
-    labels_level     = np.genfromtxt(label_path_level)
-    
-    # Filtra gli indici con damage_class diversa da 0
-    valid_indices = np.where(labels_class != 0)[0]
-    N_ist = len(valid_indices)  # Usa solo gli indici validi
+def read_data(path_data, train):
+    #Import labels (coeff of KL of the field)
+    labels_path = path_data + '/samples_h1_60.csv'
+    labels = np.genfromtxt(labels_path, delimiter=',', dtype=float)
+
+    # Seleziona solo le prime 4 colonne
+    labels = labels[:, :n_params]
+
+    # scaling_factors = np.array([5.93, 4.32, 4.32, 3.15])
+    # scaled_labels = labels * scaling_factors
+
+    N_ist = len(labels) 
 
     # Importiamo i valori generati dal VAE
     if train:
@@ -99,17 +79,7 @@ def read_data(path_data, train):
     
     Z = pd.read_csv(path_data_z, header=0)
 
-
-    # Creazione dei vettori di label di 7 elementi
-    labels_vector = np.zeros((N_ist, n_class))  # Vettore di etichette a 7 classi
-    
-    for i, idx in enumerate(valid_indices):
-        # Inserisci il damage_level nella posizione corretta in base alla classe di danno
-        damage_class = labels_class[idx] - 1  # Mappiamo la classe 1 su 0, 2 su 1, ecc.
-        damage_level = labels_level[idx]
-        labels_vector[i][damage_class] = damage_level - 0.25
-
-    return Z, labels_vector, N_ist
+    return Z, labels, N_ist
 
 
 #---------------------------------------------------------------------------------------------------------------
@@ -126,8 +96,8 @@ reg = 0.01
 # Hyperparameters
 validation_split = 0.20
 batch_size = 32
-n_epochs = 250
-early_stop_epochs=15
+n_epochs = 350
+early_stop_epochs=25
 initial_lr = 1e-3
 decay_length = 0.8
 ratio_to_stop = 0.05
@@ -143,96 +113,69 @@ b_reg = 1e-3
 rate_drop = 0.05
 
 
-# Struttura senza Dropout  
-# def Coupling(input_shape=latent_dim, num_classes=n_class):
+
+
+
+# def Coupling(input_shape=latent_dim, num_params=n_params, reg=0.005, dropout_rate=0.1):
 #     # Input per il vettore latente Z di dimensione 4
-#     input_z = layers.Input(shape=(latent_dim,), name='Input_Z')
+#     input_z = layers.Input(shape=(input_shape,), name='Input_Z')
 #     # Input per il vettore di label condizionale di dimensione num_classes
-#     input_l = layers.Input(shape=(num_classes,), name='Input_Label')
-    
-#     # Network per condizionare s e t in funzione del label y
-#     # Uso un piccolo MLP per una rappresentazione più complessa dell'embedding delle classi
-#     label_condition = layers.Dense(32, activation='relu')(input_l)
-#     label_condition = layers.Dense(64, activation='relu')(label_condition)
-#     label_embedding = layers.Dense(128, activation='relu')(label_condition) 
-
-
-#     # Livelli densi per la componente t (traslazione) con condizionamento MLP
-#     t = layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(reg))(input_z)
-#     t_embedding = layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
-#     t = layers.Concatenate()([t, t_embedding])  # Condizionamento con il label embedding
-#     t = layers.Dense(latent_dim, activation="linear", kernel_regularizer=regularizers.l2(reg))(t)
-
-#     # Livelli densi per la componente s (scalatura) con condizionamento MLP
-#     s = layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(reg))(input_z)
-#     s_embedding = layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
-#     s = layers.Concatenate()([s, s_embedding])  # Condizionamento con il label embedding
-#     s = layers.Dense(latent_dim, activation="tanh", kernel_regularizer=regularizers.l2(reg))(s)
-
-#     return keras.Model(inputs=[input_z, input_l], outputs=[s, t])
-
-
-# def Coupling(input_shape=latent_dim, num_classes=n_class, reg=0.01, dropout_rate=0.3):
-#     # Input per il vettore latente Z di dimensione 4
-#     input_z = layers.Input(shape=(latent_dim,), name='Input_Z')
-#     # Input per il vettore di label condizionale di dimensione num_classes
-#     input_l = layers.Input(shape=(num_classes,), name='Input_Label')
+#     input_l = layers.Input(shape=(num_params,), name='Input_Label')
 
 #     # Network per condizionare s e t in funzione del label y
-#     label_condition = layers.Dense(32, activation='relu')(input_l)
-#     label_condition = layers.Dense(64, activation='relu')(label_condition)
-#     label_embedding = layers.Dense(128, activation='relu')(label_condition) 
+#     label_condition = layers.Dense(32, activation='elu')(input_l)
+#     label_condition = layers.Dense(64, activation='elu')(label_condition)
+#     label_embedding = layers.Dense(128, activation='elu')(label_condition) 
 
 #     # Livelli densi per la componente t (traslazione) con condizionamento MLP
-#     t = layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(reg))(input_z)
+#     t = layers.Dense(64, activation="elu", kernel_regularizer=regularizers.l2(reg))(input_z)
 #     t = layers.Dropout(dropout_rate)(t)  # Aggiungi Dropout
-#     t_embedding = layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+#     t_embedding = layers.Dense(64, activation='elu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
 #     t = layers.Concatenate()([t, t_embedding])  # Condizionamento con il label embedding
+#     t = layers.Dense(32, activation="elu", kernel_regularizer=regularizers.l2(reg))(t)
 #     t = layers.Dense(latent_dim, activation="linear", kernel_regularizer=regularizers.l2(reg))(t)
 
 #     # Livelli densi per la componente s (scalatura) con condizionamento MLP
-#     s = layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(reg))(input_z)
+#     s = layers.Dense(64, activation="elu", kernel_regularizer=regularizers.l2(reg))(input_z)
 #     s = layers.Dropout(dropout_rate)(s)  # Aggiungi Dropout
-#     s_embedding = layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+#     s_embedding = layers.Dense(64, activation='elu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
 #     s = layers.Concatenate()([s, s_embedding])  # Condizionamento con il label embedding
+#     s = layers.Dense(32, activation="elu", kernel_regularizer=regularizers.l2(reg))(s)
 #     s = layers.Dense(latent_dim, activation="tanh", kernel_regularizer=regularizers.l2(reg))(s)
 
 #     return keras.Model(inputs=[input_z, input_l], outputs=[s, t])
 
 
-
-
-def Coupling(input_shape=latent_dim, num_classes=n_class, reg=0.001, dropout_rate=0.1):
+def Coupling(input_shape=latent_dim, num_params=n_params, reg=0.01, dropout_rate=0.2):
     # Input per il vettore latente Z di dimensione 4
-    input_z = layers.Input(shape=(latent_dim,), name='Input_Z')
+    input_z = layers.Input(shape=(input_shape,), name='Input_Z')
     # Input per il vettore di label condizionale di dimensione num_classes
-    input_l = layers.Input(shape=(num_classes,), name='Input_Label')
+    input_l = layers.Input(shape=(num_params,), name='Input_Label')
 
     # Network per condizionare s e t in funzione del label y
-    label_condition = layers.Dense(32, activation='relu')(input_l)
-    label_condition = layers.Dense(64, activation='relu')(label_condition)
-    label_embedding = layers.Dense(128, activation='relu')(label_condition) 
+    label_condition = layers.Dense(32, activation='elu')(input_l)
+    label_condition = layers.Dropout(dropout_rate)(label_condition)
+    label_condition = layers.Dense(64, activation='elu')(label_condition)
+    label_condition = layers.Dropout(dropout_rate)(label_condition)
+    label_embedding = layers.Dense(128, activation='elu')(label_condition) 
 
     # Livelli densi per la componente t (traslazione) con condizionamento MLP
-    t = layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(reg))(input_z)
+    t = layers.Dense(64, activation="elu", kernel_regularizer=regularizers.l2(reg))(input_z)
     t = layers.Dropout(dropout_rate)(t)  # Aggiungi Dropout
-    t_embedding = layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+    t_embedding = layers.Dense(64, activation='elu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
     t = layers.Concatenate()([t, t_embedding])  # Condizionamento con il label embedding
-    t = layers.Dense(32, activation="relu", kernel_regularizer=regularizers.l2(reg))(t)
+    t = layers.Dense(32, activation="elu", kernel_regularizer=regularizers.l2(reg))(t)
     t = layers.Dense(latent_dim, activation="linear", kernel_regularizer=regularizers.l2(reg))(t)
 
     # Livelli densi per la componente s (scalatura) con condizionamento MLP
-    s = layers.Dense(64, activation="relu", kernel_regularizer=regularizers.l2(reg))(input_z)
+    s = layers.Dense(64, activation="elu", kernel_regularizer=regularizers.l2(reg))(input_z)
     s = layers.Dropout(dropout_rate)(s)  # Aggiungi Dropout
-    s_embedding = layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
+    s_embedding = layers.Dense(64, activation='elu', kernel_regularizer=regularizers.l2(reg))(label_embedding)
     s = layers.Concatenate()([s, s_embedding])  # Condizionamento con il label embedding
-    s = layers.Dense(32, activation="relu", kernel_regularizer=regularizers.l2(reg))(s)
+    s = layers.Dense(32, activation="elu", kernel_regularizer=regularizers.l2(reg))(s)
     s = layers.Dense(latent_dim, activation="tanh", kernel_regularizer=regularizers.l2(reg))(s)
 
     return keras.Model(inputs=[input_z, input_l], outputs=[s, t])
-
-
-
 
 
     
@@ -241,21 +184,22 @@ def Coupling(input_shape=latent_dim, num_classes=n_class, reg=0.001, dropout_rat
 ## Real NVP
 """
 
+
 class RealNVP(keras.Model):
-    def __init__(self, num_coupling_layers, num_classes):
+    def __init__(self, num_coupling_layers, num_params):
         super().__init__()
 
         self.num_coupling_layers = num_coupling_layers
-        self.num_classes = num_classes
+        self.num_parameters = num_params
 
         # Distribuzione dello spazio latente di dim 4
         self.distribution = tfp.distributions.MultivariateNormalDiag(
-            loc=[0.0] * 4, scale_diag=[1.0] * 4  # La distribuzione ha 4 dimensioni
+            loc=[0.0] * latent_dim, scale_diag=[1.0] * latent_dim  # La distribuzione ha 4 dimensioni
         )
 
         # Maschere (alterniamo metà delle dimensioni: 2 su 4)
         self.masks = tf.convert_to_tensor(
-            [[0] * 2 + [1] * 2, [1] * 2 + [0] * 2] * (self.num_coupling_layers // 2), dtype=tf.float32
+            [[0] * 4 + [1] * 4, [1] * 4 + [0] * 4] * (self.num_coupling_layers // 2), dtype=tf.float32
         )
 
 
@@ -263,7 +207,7 @@ class RealNVP(keras.Model):
         self.log_likelihood_tracker = keras.metrics.Mean(name="log_likelihood")
         self.log_det_inv_tracker = keras.metrics.Mean(name="log_det_inv")
 
-        self.layers_list = [Coupling(input_shape=latent_dim, num_classes=n_class) for i in range(num_coupling_layers)]
+        self.layers_list = [Coupling(input_shape=latent_dim, num_params=n_params) for i in range(num_coupling_layers)]
     
     @property
     def metrics(self):
@@ -279,7 +223,7 @@ class RealNVP(keras.Model):
 
         for i in range(self.num_coupling_layers):
 
-            mask = tf.reshape(self.masks[i], [1, 4])  # Aggiungi una dimensione batch
+            mask = tf.reshape(self.masks[i], [1, latent_dim])  # Aggiungi una dimensione batch
             x_masked = x * mask  # Maschera l'input
             reversed_mask = 1 - mask
             s, t = self.layers_list[i]([x_masked, y])
@@ -352,6 +296,7 @@ class RealNVP(keras.Model):
 
 
     def predict(self, x, y):
+        
         # Assicurati che x e y siano TensorFlow tensors
         x = tf.convert_to_tensor(x, dtype=tf.float32)
         y = tf.convert_to_tensor(y, dtype=tf.float32)
@@ -364,21 +309,17 @@ class RealNVP(keras.Model):
 
         log_likelihood = log_likelihood_z + log_det_inv
 
-        return 8*log_likelihood
-
+        return log_likelihood
 
     @tf.function(jit_compile=True)  # Abilita XLA per la compilazione JIT
     def predict_per_uno(self, x, y):
-        # # Evita la conversione ridondante se x e y sono già tensori
-        # if not isinstance(x, tf.Tensor):
-        #     x = tf.convert_to_tensor(x, dtype=tf.float32)
-        #     x.set_shape([EXPECTED_SHAPE_X])  # Specifica la forma statica di x
-        # if not isinstance(y, tf.Tensor):
-        #     y = tf.convert_to_tensor(y, dtype=tf.float32)
-        #     y.set_shape([EXPECTED_SHAPE_Y])  # Specifica la forma statica di y
-
-        x = tf.convert_to_tensor(x, dtype=tf.float64)
-        y = tf.convert_to_tensor(y, dtype=tf.float64)
+        # Evita la conversione ridondante se x e y sono già tensori
+        if not isinstance(x, tf.Tensor):
+            x = tf.convert_to_tensor(x, dtype=tf.float32)
+            x.set_shape([EXPECTED_SHAPE_X])  # Specifica la forma statica di x
+        if not isinstance(y, tf.Tensor):
+            y = tf.convert_to_tensor(y, dtype=tf.float32)
+            y.set_shape([EXPECTED_SHAPE_Y])  # Specifica la forma statica di y
 
         # Disabilita la tracciatura del gradiente per migliorare l'efficienza
         with tf.GradientTape(persistent=False, watch_accessed_variables=False) as tape:
@@ -392,13 +333,18 @@ class RealNVP(keras.Model):
             log_likelihood = log_likelihood_z + log_det_inv
 
         # Restituisci il risultato scalato come richiesto
-        return 8 * log_likelihood
+        return log_likelihood
+
 
 
 #---------------------------------------------------------------------------------------------------------------------------------
 
+n_coupling_layers = 12
+
 # Creazione dell'istanza RealNVP
-NVP = RealNVP(num_coupling_layers=14, num_classes=n_class)
+NVP = RealNVP(num_coupling_layers=n_coupling_layers, num_params=n_params)
+
+NVP.build([(None, latent_dim), (None, n_params)])
 
 # Caricamento dei pesi salvati
 NVP.load_weights('./models/NVP_for_MCMC.weights.h5')
@@ -428,9 +374,6 @@ class RealNVPTF(Op):
         # Ricevi i numpy array e forza float64 per ogni operazione
         data, label_vector = inputs
 
-        # Imposta a 0 i valori tra 0 e 0.05 nel vettore delle label
-        label_vector[label_vector < 0.05] = 0.0
-
         # Assicurati che anche l'input al modello NVP sia in formato float64
         label_vector_eval = np.expand_dims(label_vector, axis=0).astype(np.float64)  # (batch_size, n_class)
 
@@ -446,43 +389,44 @@ class RealNVPTF(Op):
 real_nvp_tf_op = RealNVPTF(NVP)
 
 # Definisci la funzione di log-likelihood che userai in PyMC
-def realnvp_logp(data, label_vector):
+# def realnvp_logp(data, label_vector):
+#     # Converte i dati e label_vector in float64 prima di passare all'Op personalizzato
+#     return real_nvp_tf_op(data.astype(np.float64), label_vector.astype(np.float64))
+
+def realnvp_logp(label_vector, z_mean, sigma):
+
+    # Conversione esplicita in TensorVariable
+    z_mean = pt.as_tensor_variable(z_mean, dtype='float64')
+    sigma = pt.as_tensor_variable(sigma, dtype='float64')
+
+    # Genera un array di numeri casuali da una distribuzione normale
+    sampled_data = pt.random.normal(loc=z_mean, scale=sigma, size=(z_mean.shape[0],))
+    # sampled_data = z_mean
+       
     # Converte i dati e label_vector in float64 prima di passare all'Op personalizzato
-    return real_nvp_tf_op(data.astype(np.float64), label_vector.astype(np.float64))
+    return real_nvp_tf_op(sampled_data.astype(np.float64), label_vector.astype(np.float64))
 
 
 # Funzione che esegue l'inferenza MCMC usando Metropolis-Hastings
 def mcmc_classification_pymc(z_mean, z_log_var, num_iterations):
     with pm.Model() as model:
         # Definiamo una distribuzione a priori per il vettore di label
-        # label_vector = pm.Normal("label_vector", mu=0, sigma=1, shape=(n_class,))
-        label_vector = pm.Uniform('label_vector', lower=0, upper=0.55, shape=(n_class,))
-        # label_vector = pm.Beta('label_vector', alpha=2, beta=5, shape=(n_class,))
-        # label_vector = pm.Exponential('label_vector', lam=1/0.7, shape=(n_class,))
+        label_vector = pm.Normal('label_vector', mu=0, sigma=1, shape=(n_params,))
 
         # Calcola la deviazione standard dalla log-varianza
         sigma = pm.math.exp(0.5 * z_log_var)  # Deviance standard
         # Genera i nuovi dati campionando dalla distribuzione normale
-        sampled_data = pm.Normal('sampled_data', mu=z_mean, sigma=sigma, shape=(len(z_mean),))
+        # sampled_data = pm.Normal('sampled_data', mu=z_mean, sigma=sigma, shape=(len(z_mean),))
+        # sampled_data = pm.Deterministic('sampled_data', z_mean + sigma * np.random.randn(len(z_mean)))
 
         # Usa pm.Potential per integrare la log-likelihood calcolata esternamente
-        loglikelihood = pm.Potential("loglikelihood", realnvp_logp(sampled_data, label_vector))
+        # pm.Potential("realnvp_loglikelihood", realnvp_logp(sampled_data, label_vector))
+        pm.Potential("realnvp_loglikelihood", realnvp_logp(label_vector, z_mean, sigma))
+
 
         # Eseguiamo l'inferenza MCMC usandoset Metropolis-Hastings
-        # step = pm.Metropolis()  # Usa Metropolis-Hastings come algoritmo di campionamento
-        # Usare DE-Metropolis come algoritmo di campionamento
-        # step = pm.DEMetropolis()
-
-        step = pm.DEMetropolisZ(scaling=0.1, tune_interval=300)
-        trace = pm.sample(num_iterations, cores=1, chains=2, step=step, tune=15000 , return_inferencedata=True)
-
-        # Parametri di results_sampled_2
-        # step = pm.DEMetropolisZ(scaling=0.0003, tune_interval=750)
-        # trace = pm.sample(num_iterations, cores=1, chains=2, step=step, tune=15000 , return_inferencedata=True)
-        # Parametri di results_sampled e del 4
-        # step = pm.DEMetropolisZ(scaling=0.0003, tune_interval=80)
-        # trace = pm.sample(num_iterations, cores=1, chains=2, step=step, tune=10000 , return_inferencedata=True)
-
+        step = pm.DEMetropolisZ(scaling=0.1, tune_interval=100)
+        trace = pm.sample(num_iterations, cores=1, chains=2, step=step, tune=8000 , return_inferencedata=True)
 
         # Riepilogo del campionamento
         summary = az.summary(trace)
@@ -1105,8 +1049,11 @@ def analyze_damage_levels(csv_file_name):
 idx = np.random.randint(0, Z_test.shape[0]) 
 
 # Estrai le colonne di media e log-varianza per il campione selezionato
-z_mean = Z_test[['mean_0', 'mean_1', 'mean_2', 'mean_3']].to_numpy()  # Estrai le colonne delle medie
-z_log_var = Z_test[['var_0', 'var_1', 'var_2', 'var_3']].to_numpy()  # Estrai le colonne delle log-varianze
+z_mean = Z_test[['mean_0','mean_1','mean_2','mean_3','mean_4','mean_5','mean_6','mean_7']].to_numpy()  # Estrai le colonne delle medie
+z_log_var = Z_test[['var_0','var_1','var_2','var_3','var_4','var_5','var_6','var_7']].to_numpy()  # Estrai le colonne delle log-varianze
+# z_mean = Z_test[['mean_0','mean_1','mean_2','mean_3']].to_numpy()  # Estrai le colonne delle medie
+# z_log_var = Z_test[['var_0','var_1','var_2','var_3']].to_numpy()
+
 
 # Definisci il numero di iterazioni per MCMC
 n_iter = 20000  
@@ -1119,6 +1066,13 @@ trace = mcmc_classification_pymc(z_mean[idx], z_log_var[idx], n_iter)
 # Questo ti restituirà un array con dimensioni (n_samples_totali, 7), dove n_samples_totali = n_chains * n_draws (n_iter, i tunes sono scartati)
 accepted_labels = trace.posterior["label_vector"].stack(samples=("chain", "draw")).values
 
+print(accepted_labels.shape)
+
+# Fattori di divisione per ciascun elemento del vettore
+# scaling_factors = np.array([5.93, 4.32, 4.32, 3.15]).reshape(4, 1)
+
+# Divisione elemento per elemento
+# accepted_labels = accepted_labels / scaling_factors
 
 
 # Analizza i risultati: Calcola la media dei campioni per ottenere il label continuo stimato
@@ -1143,8 +1097,8 @@ plt.figure(figsize=(15, 10))
 
 
 for i in range(num_labels):
-    plt.subplot(2, 4, i + 1)  # Crea una griglia di 2 righe e 4 colonne
-    plt.hist(accepted_labels[i, :], bins=50, alpha=0.7, color='blue', edgecolor='black', range=(0,0.55))
+    plt.subplot(2, 2, i + 1)  # Crea una griglia 
+    plt.hist(accepted_labels[i, :], bins=100, alpha=0.7, color='blue', edgecolor='black', range=(-5,5))
     plt.title(f'Class {i + 1}\nTrue label: {true_label[i]:.2f}',fontsize=16)
     plt.xlabel('Valore',fontsize=14)
     plt.ylabel('Frequenza',fontsize=14)
@@ -1161,6 +1115,21 @@ plt.savefig(os.path.join(output_dir, f'accepted_labels_histogram_idx_{idx}.png')
 plt.show()
 
 
+# Seleziona la componente da tracciare
+components_to_plot = [2]
+
+plt.figure(figsize=(10, 6))
+
+for i in components_to_plot:
+    plt.plot(accepted_labels[i, 0:20000], label=f'Component {i}')
+
+plt.xlabel('Iteration')
+plt.ylabel('Parameter Value')
+plt.title('MCMC Trace for Selected Label Vector Components')
+plt.legend()
+plt.show()
+
+
 
 
 
@@ -1168,10 +1137,10 @@ plt.show()
 ## Creazione .csv
 """
 
-n_iter = 20000 
+n_iter = 40000 
 
 # Nome del file CSV dove salvare i risultati
-csv_file_name = 'mcmc_results_sampled_5.csv'
+csv_file_name = 'mcmc_results_sampled.csv'
 
 # Numero di iterazioni
 num_iterations = 0

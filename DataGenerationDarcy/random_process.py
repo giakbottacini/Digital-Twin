@@ -99,3 +99,32 @@ class RandomProcess:
         if not compare:
             plt.show()
 
+
+    def plot_eigenvalues(self, save_path="/root/shared/eigenvalues.png"):
+        plt.figure(figsize=(8, 6))
+        plt.plot(self.eigenvalues, marker='o', linestyle='-', color='b')
+
+        # Aggiungi i valori numerici dei primi 6 autovalori con gestione delle sovrapposizioni
+        last_y = None  # Per tracciare l'ultima posizione Y usata
+        for i in range(min(6, len(self.eigenvalues))):
+            y_value = self.eigenvalues[i]
+            
+            # Se l'etichetta è troppo vicina alla precedente, spostala più in alto
+            if last_y is not None and abs(y_value - last_y) < 0.1 * y_value:
+                y_value += 0.05 * y_value
+            
+            plt.text(i, y_value, f"{self.eigenvalues[i]:.2e}",
+                    fontsize=9, ha='center', va='bottom', color='black')
+            
+            last_y = y_value  # Aggiorna la posizione Y dell'ultima etichetta
+
+        plt.xlabel('Index')
+        plt.ylabel('Eigenvalue')
+        plt.title('Eigenvalues of the Covariance Matrix')
+        plt.grid(True)
+
+        # Salva il grafico invece di mostrarlo
+        plt.savefig(save_path, bbox_inches='tight')
+        # plt.close()  # Chiudi la figura per liberare memoria
+
+
