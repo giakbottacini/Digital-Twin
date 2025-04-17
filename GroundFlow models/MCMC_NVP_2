@@ -41,8 +41,8 @@ import multiprocessing
 # Specify the example you are dealing with
 esempio = 'DARCY_FRAME_DT'
 # Training and Testing data
-path_data_train   = '../DataGenerationDarcy/data/data_train'
-path_data_test   = '../DataGenerationDarcy/data/data_test'
+path_data_train   = '../DataGenerationDarcy/data/data_train_l25_kl16_7x7'
+path_data_test   = '../DataGenerationDarcy/data/data_test_l25_kl16_7x7'
 # Saving model
 path_save       = "models/"
 #Position of mean and std. deviation
@@ -50,11 +50,11 @@ path_restore  = '../DataGenerationDarcy/data/'
 
 path_z = "output_VAE_for_MCMC"
 
-seq_len = 25
-n_params = 4 #6 #9
+seq_len = 49 #81
+n_params = 16 #12 #10
 
 
-latent_dim = 8
+latent_dim = 20 #16
 
 
 # Read data and create dataset
@@ -64,10 +64,9 @@ def read_data(path_data, train):
     labels = np.genfromtxt(labels_path, delimiter=',', dtype=float)
 
     # Seleziona solo le prime 4 colonne
+    # labels = labels[:, :n_params]
     labels = labels[:, :n_params]
 
-    # scaling_factors = np.array([5.93, 4.32, 4.32, 3.15])
-    # scaled_labels = labels * scaling_factors
 
     N_ist = len(labels) 
 
@@ -199,7 +198,7 @@ class RealNVP(keras.Model):
 
         # Maschere (alterniamo metà delle dimensioni: 2 su 4)
         self.masks = tf.convert_to_tensor(
-            [[0] * 4 + [1] * 4, [1] * 4 + [0] * 4] * (self.num_coupling_layers // 2), dtype=tf.float32
+            [[0] * 10 + [1] * 10, [1] * 10 + [0] * 10] * (self.num_coupling_layers // 2), dtype=tf.float32
         )
 
 
@@ -217,24 +216,52 @@ class RealNVP(keras.Model):
 
 
     # call con struttura iniziale 
-    def call(self, x, y, training=True):  
+    # def call(self, x, y, training=True):  
 
+    #     log_det_inv = 0   
+
+    #     for i in range(self.num_coupling_layers):
+
+    #         mask = tf.reshape(self.masks[i], [1, latent_dim])  # Aggiungi una dimensione batch
+    #         x_masked = x * mask  # Maschera l'input
+    #         reversed_mask = 1 - mask
+    #         s, t = self.layers_list[i]([x_masked, y])
+    #         s *= reversed_mask
+    #         t *= reversed_mask
+
+    #         x = (
+    #             reversed_mask * (x * tf.exp(s) +  t )
+    #             + x_masked
+    #         )
+    #         log_det_inv += tf.reduce_sum(s, axis=1)
+
+    #     return x, log_det_inv
+
+    def call(self, x, y, training=True):  
         log_det_inv = 0   
 
         for i in range(self.num_coupling_layers):
 
-            mask = tf.reshape(self.masks[i], [1, latent_dim])  # Aggiungi una dimensione batch
-            x_masked = x * mask  # Maschera l'input
+            mask = tf.reshape(self.masks[i], [1, latent_dim])  # Shape: [1, dim]
             reversed_mask = 1 - mask
-            s, t = self.layers_list[i]([x_masked, y])
-            s *= reversed_mask
-            t *= reversed_mask
 
-            x = (
-                reversed_mask * (x * tf.exp(s) +  t )
-                + x_masked
-            )
-            log_det_inv += tf.reduce_sum(s, axis=1)
+            # Primo passo: trasforma la parte non mascherata
+            x_masked = x * mask
+            s1, t1 = self.layers_list[i]([x_masked, y])
+            s1 *= reversed_mask
+            t1 *= reversed_mask
+
+            x = reversed_mask * (x * tf.exp(s1) + t1) + x_masked
+            log_det_inv += tf.reduce_sum(s1, axis=1)
+
+            # Secondo passo: trasforma la parte mascherata, ora che x è aggiornato
+            x_masked = x * reversed_mask
+            s2, t2 = self.layers_list[i]([x_masked, y])
+            s2 *= mask
+            t2 *= mask
+
+            x = mask * (x * tf.exp(s2) + t2) + x_masked
+            log_det_inv += tf.reduce_sum(s2, axis=1)
 
         return x, log_det_inv
     
@@ -339,7 +366,7 @@ class RealNVP(keras.Model):
 
 #---------------------------------------------------------------------------------------------------------------------------------
 
-n_coupling_layers = 12
+n_coupling_layers = 20
 
 # Creazione dell'istanza RealNVP
 NVP = RealNVP(num_coupling_layers=n_coupling_layers, num_params=n_params)
@@ -426,7 +453,7 @@ def mcmc_classification_pymc(z_mean, z_log_var, num_iterations):
 
         # Eseguiamo l'inferenza MCMC usandoset Metropolis-Hastings
         step = pm.DEMetropolisZ(scaling=0.1, tune_interval=100)
-        trace = pm.sample(num_iterations, cores=1, chains=2, step=step, tune=8000 , return_inferencedata=True)
+        trace = pm.sample(num_iterations, cores=1, chains=2, step=step, tune=12000 , return_inferencedata=True)
 
         # Riepilogo del campionamento
         summary = az.summary(trace)
@@ -478,27 +505,6 @@ def calculate_std(samples):
 
 
 import csv
-
-# Funzione che salva i risultati in un file CSV
-# def append_results_to_csv(file_name, idx, true_label, label_estimate_mean, label_estimate_mode):
-#     # Se il file non esiste, crealo e aggiungi l'intestazione
-#     file_exists = os.path.isfile(file_name)
-
-#     with open(file_name, mode='a', newline='') as file:
-#         writer = csv.writer(file)
-        
-#         # Aggiungi intestazione solo se il file non esiste
-#         if not file_exists:
-#             writer.writerow(['Index', 'True Label', 'Mean Label Estimate', 'Mode Label Estimate'])
-        
-#         # Converti i vettori in stringhe separate da virgole
-#         true_label_str = ','.join(map(str, true_label))
-#         mean_label_str = ','.join(map(str, label_estimate_mean))
-#         mode_label_str = ','.join(map(str, label_estimate_mode))
-        
-#         # Scrivi la riga completa nel CSV
-#         writer.writerow([idx, true_label_str, mean_label_str, mode_label_str])
-
 
 def calculate_hpdi(samples, alpha=0.05):
 
@@ -573,467 +579,111 @@ def append_results_to_csv(file_name, idx, true_label, samples_mcmc):
 
 
 
-# def append_results_to_csv(file_name, idx, true_label, label_estimate_mean, label_estimate_mode, standard_deviation, metrics):
-#     # Se il file non esiste, crealo e aggiungi l'intestazione
-#     file_exists = os.path.isfile(file_name)
 
-#     with open(file_name, mode='a', newline='') as file:
-#         writer = csv.writer(file)
+"""
+## Conductivity prediction analysis
+"""
 
-#         # Aggiungi intestazione solo se il file non esiste
-#         if not file_exists:
-#             writer.writerow(['Index', 'True Label', 'Mean Estimate', 'Mode Estimate', 'Standard Deviation'
-#                              'MAE Mean', 'MSE Mean', 'RMSE Mean', 'R² Mean', 'SMAPE Mean',
-#                              'NRMSE Mean', 'Cosine Sim. Mean', 'Explained Variance Mean',
-#                              'MAE Mode', 'MSE Mode', 'RMSE Mode', 'R² Mode', 'SMAPE Mode',
-#                              'NRMSE Mode', 'Cosine Sim. Mode', 'Explained Variance Mode'])
-
-#         # Scrivi la riga completa nel CSV con i risultati e le metriche
-#         writer.writerow([idx, 
-#                          ','.join(map(str, true_label)), 
-#                          ','.join(map(str, label_estimate_mean)), 
-#                          ','.join(map(str, label_estimate_mode)),
-#                          ','.join(map(str, standard_deviation)),
-#                          metrics['mae_mean'], metrics['mse_mean'], metrics['rmse_mean'], 
-#                          metrics['r_squared_mean'], metrics['smape_mean'], metrics['nrmse_mean'], 
-#                          metrics['cosine_sim_mean'], metrics['explained_variance_mean'],
-#                          metrics['mae_mode'], metrics['mse_mode'], metrics['rmse_mode'], 
-#                          metrics['r_squared_mode'], metrics['smape_mode'], metrics['nrmse_mode'], 
-#                          metrics['cosine_sim_mode'], metrics['explained_variance_mode']])
-
-# def update_performance_metrics_from_file(input_csv, output_csv):
-#     # Leggi i dati dal file di input
-#     df = pd.read_csv(input_csv)
-
-#     # Per ogni riga del CSV
-#     for idx, row in df.iterrows():
-#         # Estrai i vettori di True Label, Mean Estimate e Mode Estimate
-#         true_label = np.array([float(x) for x in row['True Label'].split(',')])
-#         label_estimate_mean = np.array([float(x) for x in row['Mean Estimate'].split(',')])
-#         label_estimate_mode = np.array([float(x) for x in row['Mode Estimate'].split(',')])
-#         standard_deviation = np.array([float(x) for x in row['Standard Deviation'].split(',')])
-
-#         # Calcola le metriche di performance
-#         metrics = calculate_performance_metrics(true_label, label_estimate_mean, label_estimate_mode)
-
-#         # Appendi i risultati aggiornati nel file di output
-#         append_results_to_csv(output_csv, idx, true_label, label_estimate_mean, label_estimate_mode, standard_deviation, metrics)
+def load_eigenpairs(filename):
+    data = np.load(filename)
+    return data["eigenvalues"], data["eigenvectors"]
 
 
+import matplotlib.tri as tri
 
+def compute_field_difference(true_coeffs, estimated_coeffs_mean, estimated_coeffs_mode, filename, field_mean=1.0, field_stdev=1.0, mesh_size=60):
+    # Carica autovalori e autovettori
+    eigenvalues, eigenvectors = load_eigenpairs(filename)
 
-
-
-
-
-
-
-# Funzione che calcola la classe predetta in base al valore massimo del vettore stimato
-def get_predicted_class(estimated_label):
-    # Trova l'indice con il valore massimo (classe predetta)
-    return np.argmax(estimated_label)
-
-# Funzione per creare confusion matrix e metriche
-def create_confusion_matrix(csv_file):
-    # Leggi il file CSV
-    df = pd.read_csv(csv_file)
+    eigenvalues_tot = eigenvalues[:16]
+    eigenvectors_tot = eigenvectors[:, :16]
+    true_coeffs_tot = true_coeffs[:16]
     
-    # Converti le colonne 'True Label', 'Mean Label Estimate' e 'Mode Label Estimate' da stringhe a array di float
-    df['True Label'] = df['True Label'].apply(lambda x: np.array(list(map(float, x.split(',')))))
-    df['Mean Estimate'] = df['Mean Estimate'].apply(lambda x: np.array(list(map(float, x.split(',')))))
-    df['Mode Estimate'] = df['Mode Estimate'].apply(lambda x: np.array(list(map(float, x.split(',')))))
+    # Usa solo i primi n_params autovalori e autovettori
+    true_coeffs = true_coeffs[:n_params]
+    eigenvalues = eigenvalues[:n_params]
+    eigenvectors = eigenvectors[:, :n_params]
+    
+    # Calcola i tre campi
+    def compute_field(coeffs):
+        return np.exp(field_mean + field_stdev * eigenvectors @ (np.sqrt(eigenvalues) * coeffs))
+    
+    def compute_field_tot(coeffs):
+        return np.exp(field_mean + field_stdev * eigenvectors_tot @ (np.sqrt(eigenvalues_tot) * coeffs))
+    
+    field_true = compute_field(true_coeffs)
+    field_est_mean = compute_field(estimated_coeffs_mean)
+    field_est_mode = compute_field(estimated_coeffs_mode)
 
-    # Ottieni le classi vere e quelle stimate (media e moda)
-    true_classes = df['True Label'].apply(get_predicted_class).values +1 
-    mean_predicted_classes = df['Mean Estimate'].apply(get_predicted_class).values +1
-    mode_predicted_classes = df['Mode Estimate'].apply(get_predicted_class).values +1
+    field_tot = compute_field_tot(true_coeffs_tot)
+    
+    # Calcola l'integrale del campo su tutto il dominio unitario
+    def compute_integral(field, mesh_size=60):
+        dx = 1.0 / mesh_size
+        field_matrix = field.reshape((mesh_size + 1, mesh_size + 1))  # Reshape ai nodi
+        field_avg = 0.25 * (field_matrix[:-1, :-1] + field_matrix[1:, :-1] + 
+                            field_matrix[:-1, 1:] + field_matrix[1:, 1:])  # Media per elemento
+        return np.sum(field_avg) * dx**2  # Integrazione sugli elementi
 
-    # Calcola metriche per predizioni con media
-    accuracy_mean = accuracy_score(true_classes, mean_predicted_classes)
-    precision_mean = precision_score(true_classes, mean_predicted_classes, average='weighted')
-    recall_mean = recall_score(true_classes, mean_predicted_classes, average='weighted')
-    f1_mean = f1_score(true_classes, mean_predicted_classes, average='weighted')
-    conf_matrix_mean = confusion_matrix(true_classes, mean_predicted_classes)
+    
+    integral_true = compute_integral(field_true)
+    integral_est_mean = compute_integral(field_est_mean)
+    integral_est_mode = compute_integral(field_est_mode)
 
-    # Calcola metriche per predizioni con moda
-    accuracy_mode = accuracy_score(true_classes, mode_predicted_classes)
-    precision_mode = precision_score(true_classes, mode_predicted_classes, average='weighted')
-    recall_mode = recall_score(true_classes, mode_predicted_classes, average='weighted')
-    f1_mode = f1_score(true_classes, mode_predicted_classes, average='weighted')
-    conf_matrix_mode = confusion_matrix(true_classes, mode_predicted_classes)
+    integral_tot = compute_integral(field_tot)
+    
+    # Calcola la norma relativa della differenza
+    def compute_relative_norm(field1, field2, integral_ref):
+        return compute_integral(np.abs(field1 - field2)) / integral_ref
+    
+    relative_norm_mean = compute_relative_norm(field_true, field_est_mean, integral_true)
+    relative_norm_mode = compute_relative_norm(field_true, field_est_mode, integral_true)
 
-    # Crea una figura con due sotto-figure
-    fig, axs = plt.subplots(2, 2, figsize=(16, 12))
+    relative_norm_mean_tot = compute_relative_norm(field_tot, field_est_mean, integral_tot)
+    relative_norm_mode_tot = compute_relative_norm(field_tot, field_est_mode, integral_tot)
 
-    # Plot della matrice di confusione per la media
-    sns.heatmap(conf_matrix_mean, annot=True, fmt='d', cmap='Blues', ax=axs[0, 0])
-    axs[0, 0].set_title('Confusion Matrix (Mean)')
-    axs[0, 0].set_xlabel('Predicted Label')
-    axs[0, 0].set_ylabel('True Label')
+    relative_norm_true_tot = compute_relative_norm(field_tot, field_true, integral_tot)
+    
+    # return {
+    #     "integral_true": integral_true,
+    #     "integral_est_mean": integral_est_mean,
+    #     "integral_est_mode": integral_est_mode,
+    #     "relative_norm_mean": relative_norm_mean,
+    #     "relative_norm_mode": relative_norm_mode
+    # }
 
-    # Aggiungi le metriche di classificazione per la media
-    metrics_mean = (
-        f"Accuracy: {accuracy_mean:.4f}\n"
-        f"Precision: {precision_mean:.4f}\n"
-        f"Recall: {recall_mean:.4f}\n"
-        f"F1-Score: {f1_mean:.4f}"
-    )
-    axs[1, 0].text(0.5, 0.5, metrics_mean, fontsize=12, ha='center', va='center')
-    axs[1, 0].set_axis_off()
+    print(f"integral_true: {integral_true}")
+    print(f"integral_est_mean: {integral_est_mean}")
+    print(f"integral_est_mode: {integral_est_mode}")
+    print(f"relative_norm_mean: {relative_norm_mean}")
+    print(f"relative_norm_mode: {relative_norm_mode}")
+    print(f"relative_norm_mean_tot: {relative_norm_mean_tot}")
+    print(f"relative_norm_mode_tot: {relative_norm_mode_tot}")
+    print(f"relative_norm_true_tot: {relative_norm_true_tot}")
 
-    # Plot della matrice di confusione per la moda
-    sns.heatmap(conf_matrix_mode, annot=True, fmt='d', cmap='Blues', ax=axs[0, 1])
-    axs[0, 1].set_title('Confusion Matrix (Mode)')
-    axs[0, 1].set_xlabel('Predicted Label')
-    axs[0, 1].set_ylabel('True Label')
-
-    # Aggiungi le metriche di classificazione per la moda
-    metrics_mode = (
-        f"Accuracy: {accuracy_mode:.4f}\n"
-        f"Precision: {precision_mode:.4f}\n"
-        f"Recall: {recall_mode:.4f}\n"
-        f"F1-Score: {f1_mode:.4f}"
-    )
-    axs[1, 1].text(0.5, 0.5, metrics_mode, fontsize=12, ha='center', va='center')
-    axs[1, 1].set_axis_off()
-
-    # Aggiungi spazi tra le figure
+    # Genera la griglia del dominio unitario
+    x = np.linspace(0, 1, mesh_size + 1)
+    y = np.linspace(0, 1, mesh_size + 1)
+    X, Y = np.meshgrid(x, y)
+    points = np.column_stack([X.ravel(), Y.ravel()])
+    triang = tri.Triangulation(points[:, 0], points[:, 1])
+    
+    # Creazione del plot con subplot
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+    titles = ["True Field", "Estimated Field (Mean)", "Estimated Field (Mode)",
+              "Difference: True - Estimated (Mean)", "Difference: True - Estimated (Mode)", "Field Tot"]
+    fields = [field_true, field_est_mean, field_est_mode,
+              abs(field_true - field_est_mean), abs(field_true - field_est_mode), field_tot]
+    
+    for ax, field, title in zip(axes.flat, fields, titles):
+        contour = ax.tricontourf(triang, field.ravel(), cmap='viridis')
+        fig.colorbar(contour, ax=ax)
+        ax.set_title(title)
+        ax.set_xlabel("x")
+        ax.set_ylabel("y")
+    
     plt.tight_layout()
-
-    # Salva il grafico in un file immagine
-    plt.savefig("output_MCMC_NVP_2/Conf_Matrix_MCMC")
-
     plt.show()
-
-
-
-def cosine_similarity_media(y_true_array, y_pred_array):
-    cosine_similarities = []
-    
-    # Itera su ogni coppia di true label e predicted label
-    for y_true, y_pred in zip(y_true_array, y_pred_array):
-        dot_product = np.sum(y_true * y_pred)
-        norm_true = np.linalg.norm(y_true)
-        norm_pred = np.linalg.norm(y_pred)
-        
-        # Calcola la cosine similarity per la coppia corrente
-        cosine_similarity = dot_product / (norm_true * norm_pred)
-        cosine_similarities.append(cosine_similarity)
-    
-    # Restituisci la media delle cosine similarity
-    return np.mean(cosine_similarities)
-
-
-def calculate_metrics_mean(true_label_array, label_estimate_mean_array, label_estimate_mode_array):
-    # Array per le metriche RMSE
-    rmse_mean_array = []
-    rmse_mode_array = []
-
-    # Array per le metriche SMAPE
-    smape_mean_array = []
-    smape_mode_array = []
-
-    # Array per le metriche NRMSE
-    nrmse_mean_array = []
-    nrmse_mode_array = []
-
-    # Itera su ogni istanza del dataset
-    for true_label, label_estimate_mean, label_estimate_mode in zip(true_label_array, label_estimate_mean_array, label_estimate_mode_array):
-        
-        # RMSE per ogni istanza
-        mse_mean = np.mean((label_estimate_mean - true_label) ** 2)
-        mse_mode = np.mean((label_estimate_mode - true_label) ** 2)
-        rmse_mean = np.sqrt(mse_mean)
-        rmse_mode = np.sqrt(mse_mode)
-        rmse_mean_array.append(rmse_mean)
-        rmse_mode_array.append(rmse_mode)
-
-        # SMAPE per ogni istanza
-        smape_mean = 100 * np.mean(2 * np.abs(label_estimate_mean - true_label) / (np.abs(label_estimate_mean) + np.abs(true_label)))
-        smape_mode = 100 * np.mean(2 * np.abs(label_estimate_mode - true_label) / (np.abs(label_estimate_mode) + np.abs(true_label)))
-        smape_mean_array.append(smape_mean)
-        smape_mode_array.append(smape_mode)
-
-        # NRMSE per ogni istanza
-        nrmse_mean = rmse_mean / (np.max(true_label) + 0.25 - np.min(true_label))
-        nrmse_mode = rmse_mode / (np.max(true_label) + 0.25 - np.min(true_label))
-        nrmse_mean_array.append(nrmse_mean)
-        nrmse_mode_array.append(nrmse_mode)
-
-    # Calcolo della media delle metriche
-    rmse_mean_avg = np.mean(rmse_mean_array)
-    rmse_mode_avg = np.mean(rmse_mode_array)
-
-    smape_mean_avg = np.mean(smape_mean_array)
-    smape_mode_avg = np.mean(smape_mode_array)
-
-    nrmse_mean_avg = np.mean(nrmse_mean_array)
-    nrmse_mode_avg = np.mean(nrmse_mode_array)
-
-    return rmse_mean_avg, rmse_mode_avg, smape_mean_avg, smape_mode_avg, nrmse_mean_avg, nrmse_mode_avg
-
-
-def calcola_medie_normalizzate_dataset(vettori):
-    media_vicini_normalizzata_totale = []
-    media_altri_normalizzata_totale = []
-    
-    # Cicla su ogni vettore nel dataset
-    for vettore in vettori:
-        # Trova l'indice del valore massimo (classe predetta)
-        indice_max = np.argmax(vettore)
-        valore_max = vettore[indice_max]
-
-        # Calcola la media dei due valori vicini
-        if indice_max == 0:
-            # Se il massimo è il primo elemento, prendi solo il secondo
-            media_vicini = vettore[indice_max + 1]
-        elif indice_max == len(vettore) - 1:
-            # Se il massimo è l'ultimo elemento, prendi solo il penultimo
-            media_vicini = vettore[indice_max - 1]
-        else:
-            # Altrimenti, prendi il valore precedente e successivo
-            media_vicini = (vettore[indice_max - 1] + vettore[indice_max + 1]) / 2
-
-        # Calcola la media degli altri quattro elementi
-        altri_elementi = [vettore[i] for i in range(len(vettore)) if i not in [indice_max, indice_max - 1, indice_max + 1]]
-        media_altri = np.mean(altri_elementi)
-
-        # Normalizza le due medie rispetto al valore massimo
-        media_vicini_normalizzata = media_vicini / valore_max
-        media_altri_normalizzata = media_altri / valore_max
-
-        # Aggiungi le medie normalizzate alle liste totali
-        media_vicini_normalizzata_totale.append(media_vicini_normalizzata)
-        media_altri_normalizzata_totale.append(media_altri_normalizzata)
-    
-    # Calcola la media tra tutti i vettori
-    media_vicini_finale = np.mean(media_vicini_normalizzata_totale)
-    media_altri_finale = np.mean(media_altri_normalizzata_totale)
-    
-    return media_vicini_finale, media_altri_finale
-
-
-
-
-
-# def analyze_damage_levels(csv_file_name):
-#     # Carica i dati dal file CSV
-#     df = pd.read_csv(csv_file_name)
-    
-#     # Estrai le colonne necessarie
-#     true_labels = df['True Label'].apply(lambda x: np.fromstring(x, sep=',')).to_list()
-#     mean_labels = df['Mean Estimate'].apply(lambda x: np.fromstring(x, sep=',')).to_list()
-#     mode_labels = df['Mode Estimate'].apply(lambda x: np.fromstring(x, sep=',')).to_list()
-
-#     # Converti in array NumPy per un'elaborazione più semplice
-#     true_labels = np.array(true_labels)
-#     mean_labels = np.array(mean_labels)
-#     mode_labels = np.array(mode_labels)
-
-#     # Funzione per estrarre il livello di danno dalla classe giusta
-#     def get_damage_level(label):
-#         # Trova l'indice dove c'è il livello di danno non nullo (classe con danno massimo)
-#         damage_index = np.argmax(label)
-#         return label[damage_index], damage_index  # Restituisci il livello di danno e l'indice della classe
-
-#     # Funzione per trovare la seconda classe con il livello di danno più alto
-#     def get_second_highest_class(label):
-#         sorted_indices = np.argsort(label)  # Ordina gli indici in base ai valori crescenti
-#         second_highest_index = sorted_indices[-2]  # Il secondo più alto è il penultimo nell'array ordinato
-#         return second_highest_index
-
-#     # Analizza i livelli di danno
-#     true_damage_levels = np.array([get_damage_level(label)[0] for label in true_labels])  # Ottieni i livelli di danno reali
-#     true_classes = np.array([get_damage_level(label)[1] for label in true_labels])  # Ottieni le classi reali
-
-#     predicted_damage_levels_mean = np.array([mean_labels[i][true_classes[i]] for i in range(len(mean_labels))])
-#     predicted_damage_levels_mode = np.array([mode_labels[i][true_classes[i]] for i in range(len(mode_labels))])
-
-#     # Calcola MAE (Errore Assoluto Medio)
-#     mae_mean = np.mean(np.abs(predicted_damage_levels_mean - true_damage_levels))
-#     mae_mode = np.mean(np.abs(predicted_damage_levels_mode - true_damage_levels))
-
-#     # Calcola l'errore relativo rispetto al livello di danno reale (variazione proporzionale)
-#     relative_error_mean = np.mean(np.abs(predicted_damage_levels_mean - true_damage_levels) / (true_damage_levels+0.25))
-#     relative_error_mode = np.mean(np.abs(predicted_damage_levels_mode - true_damage_levels) / (true_damage_levels+0.25))
-
-#     # Calcola la distanza tra la classe con il danno massimo e la seconda classe più alta
-#     distances = []
-#     for label in true_labels:
-#         damage_index = get_damage_level(label)[1]
-#         second_highest_index = get_second_highest_class(label)
-#         distance = abs(damage_index - second_highest_index)  # Distanza tra la prima e la seconda classe
-#         distances.append(distance)
-    
-#     mean_distance = np.mean(distances)  # Media delle distanze
-
-#     # Converti le colonne 'True Label', 'Mean Estimate' e 'Mode Estimate' da stringhe a array di float
-#     df['True Label'] = df['True Label'].apply(lambda x: np.array(list(map(float, x.split(',')))))
-#     df['Mean Estimate'] = df['Mean Estimate'].apply(lambda x: np.array(list(map(float, x.split(',')))))
-#     df['Mode Estimate'] = df['Mode Estimate'].apply(lambda x: np.array(list(map(float, x.split(',')))))
-
-#     # Ottieni le classi vere e quelle stimate (media e moda)
-#     true_classes = df['True Label'].apply(get_predicted_class).values +1 
-#     mean_predicted_classes = df['Mean Estimate'].apply(get_predicted_class).values +1
-#     mode_predicted_classes = df['Mode Estimate'].apply(get_predicted_class).values +1
-
-#     # Calcola metriche per predizioni con media
-#     accuracy_mean = accuracy_score(true_classes, mean_predicted_classes)
-#     precision_mean = precision_score(true_classes, mean_predicted_classes, average='weighted')
-#     recall_mean = recall_score(true_classes, mean_predicted_classes, average='weighted')
-#     f1_mean = f1_score(true_classes, mean_predicted_classes, average='weighted')
-#     conf_matrix_mean = confusion_matrix(true_classes, mean_predicted_classes)
-
-#     # Calcola metriche per predizioni con moda
-#     accuracy_mode = accuracy_score(true_classes, mode_predicted_classes)
-#     precision_mode = precision_score(true_classes, mode_predicted_classes, average='weighted')
-#     recall_mode = recall_score(true_classes, mode_predicted_classes, average='weighted')
-#     f1_mode = f1_score(true_classes, mode_predicted_classes, average='weighted')
-#     conf_matrix_mode = confusion_matrix(true_classes, mode_predicted_classes)
-
-#     # Cosine Similarity
-#     cosine_sim_mean = cosine_similarity_media(true_labels, mean_labels)
-#     cosine_sim_mode = cosine_similarity_media(true_labels, mode_labels)
-
-#     # RMSE, SMAPE, NRMSE
-#     rmse_mean_avg, rmse_mode_avg, smape_mean_avg, smape_mode_avg, nrmse_mean_avg, nrmse_mode_avg = calculate_metrics_mean(true_labels, mean_labels, mode_labels)
-
-#     # Confronto vicini e lontani
-#     media_vicini_mean, media_altri_mean = calcola_medie_normalizzate_dataset(mean_labels)
-#     media_vicini_mode, media_altri_mode = calcola_medie_normalizzate_dataset(mode_labels)
-
-
-#     # Stampa dei risultati
-#     print(f"Errore Assoluto Medio (Media): {mae_mean:.4f}")
-#     print(f"Errore Assoluto Medio (Moda): {mae_mode:.4f}")
-#     print(f"Errore Relativo Medio (Media): {relative_error_mean:.4f}")
-#     print(f"Errore Relativo Medio (Moda): {relative_error_mode:.4f}")
-
-#     print(f"Accuracy Medio (Media): {accuracy_mean:.4f}")
-#     print(f"Precision Medio (Media): {precision_mean:.4f}")
-#     print(f"Recall Medio (Media): {recall_mean:.4f}")
-#     print(f"F1 Medio (Media): {f1_mean:.4f}")
-
-#     print(f"Accuracy Medio (Moda): {accuracy_mode:.4f}")
-#     print(f"Precision Medio (Moda): {precision_mode:.4f}")
-#     print(f"Recall Medio (Moda): {recall_mode:.4f}")
-#     print(f"F1 Medio (Moda): {f1_mode:.4f}")
-
-#     print(f"Cosine Similarity Medio (Media): {cosine_sim_mean:.4f}")
-#     print(f"Cosine Similarity Medio (Moda): {cosine_sim_mode:.4f}")
-
-#     print(f"RMSE Medio (Media): {rmse_mean_avg:.4f}")
-#     print(f"RMSE Medio (Moda): {rmse_mode_avg:.4f}")
-#     # print(f"SMAPE Medio (Media): {smape_mean_avg:.4f}")
-#     # print(f"SMAPE Medio (Moda): {smape_mode_avg:.4f}")
-#     print(f"NRMSE Medio (Media): {nrmse_mean_avg:.4f}")
-#     print(f"NRMSE Medio (Moda): {nrmse_mode_avg:.4f}")
-
-#     print(f"Media vicini normalizzata (Mean): {media_vicini_mean:.4f} | Media altri normalizzata(Mean):  {media_altri_mean:.4f}")
-#     print(f"Media vicini normalizzata (Mode): {media_vicini_mode:.4f} | Media altri normalizzata(Mode):  {media_altri_mode:.4f}")
-
-#     print(f"Media della distanza tra prima e seconda classe più alta: {mean_distance:.4f}")
-
-
-def analyze_damage_levels(csv_file_name):
-    # Carica i dati dal file CSV
-    df = pd.read_csv(csv_file_name)
-    
-    # Estrai le colonne necessarie
-    true_labels = df['True Label'].apply(lambda x: np.fromstring(x, sep=',')).to_list()
-    mean_labels = df['Mean Estimate'].apply(lambda x: np.fromstring(x, sep=',')).to_list()
-    mode_labels = df['Mode Estimate'].apply(lambda x: np.fromstring(x, sep=',')).to_list()
-    std_devs = df['Standard Deviation'].apply(lambda x: np.fromstring(x, sep=',')).to_list()
-
-    # Converti in array NumPy per un'elaborazione più semplice
-    true_labels = np.array(true_labels)
-    mean_labels = np.array(mean_labels)
-    mode_labels = np.array(mode_labels)
-    std_devs = np.array(std_devs)
-
-    # Funzione per estrarre il livello di danno dalla classe giusta
-    def get_damage_level(label):
-        damage_index = np.argmax(label)  # Indice della classe con danno massimo
-        return label[damage_index], damage_index
-
-    # Analizza i livelli di danno
-    true_damage_levels = np.array([get_damage_level(label)[0] for label in true_labels])  # Livelli di danno reali
-    true_classes = np.array([get_damage_level(label)[1] for label in true_labels])  # Classi reali
-
-    predicted_damage_levels_mean = np.array([mean_labels[i][true_classes[i]] for i in range(len(mean_labels))])
-    predicted_damage_levels_mode = np.array([mode_labels[i][true_classes[i]] for i in range(len(mode_labels))])
-
-    # Calcola MAE
-    mae_mean = np.mean(np.abs(predicted_damage_levels_mean - true_damage_levels))
-    mae_mode = np.mean(np.abs(predicted_damage_levels_mode - true_damage_levels))
-
-    media_vicini_mean, media_altri_mean = calcola_medie_normalizzate_dataset(mean_labels)
-    media_vicini_mode, media_altri_mode = calcola_medie_normalizzate_dataset(mode_labels)
-
-    # Errore relativo
-    relative_error_mean = np.mean(np.abs(predicted_damage_levels_mean - true_damage_levels) / (true_damage_levels + 0.25))
-    relative_error_mode = np.mean(np.abs(predicted_damage_levels_mode - true_damage_levels) / (true_damage_levels + 0.25))
-
-    # Calcola metriche per predizioni con media
-    true_classes_adjusted = true_classes + 1  # Per correggere la numerazione se necessario
-    mean_predicted_classes = np.array([np.argmax(mean_label) + 1 for mean_label in mean_labels])
-    mode_predicted_classes = np.array([np.argmax(mode_label) + 1 for mode_label in mode_labels])
-
-    accuracy_mean = accuracy_score(true_classes_adjusted, mean_predicted_classes)
-    precision_mean = precision_score(true_classes_adjusted, mean_predicted_classes, average='weighted')
-    recall_mean = recall_score(true_classes_adjusted, mean_predicted_classes, average='weighted')
-    f1_mean = f1_score(true_classes_adjusted, mean_predicted_classes, average='weighted')
-
-    accuracy_mode = accuracy_score(true_classes_adjusted, mode_predicted_classes)
-    precision_mode = precision_score(true_classes_adjusted, mode_predicted_classes, average='weighted')
-    recall_mode = recall_score(true_classes_adjusted, mode_predicted_classes, average='weighted')
-    f1_mode = f1_score(true_classes_adjusted, mode_predicted_classes, average='weighted')
-
-    # Calcolo vettore deviazione standard media per ogni componente
-    mean_std_devs_per_component = np.mean(std_devs, axis=0)
-
-    # Calcolo deviazione standard media per ogni "True Label" distinto
-    unique_true_classes = np.unique(true_classes)
-    mean_std_dev_per_class = {
-        label: np.mean(std_devs[true_classes == label]) for label in unique_true_classes
-    }
-
-    # Stampa dei risultati
-    print(f"Errore Assoluto Medio (Media): {mae_mean:.4f}")
-    print(f"Errore Assoluto Medio (Moda): {mae_mode:.4f}")
-    print(f"Errore Relativo Medio (Media): {relative_error_mean:.4f}")
-    print(f"Errore Relativo Medio (Moda): {relative_error_mode:.4f}")
-
-    print(f"Accuracy Medio (Media): {accuracy_mean:.4f}")
-    print(f"Precision Medio (Media): {precision_mean:.4f}")
-    print(f"Recall Medio (Media): {recall_mean:.4f}")
-    print(f"F1 Medio (Media): {f1_mean:.4f}")
-
-    print(f"Accuracy Medio (Moda): {accuracy_mode:.4f}")
-    print(f"Precision Medio (Moda): {precision_mode:.4f}")
-    print(f"Recall Medio (Moda): {recall_mode:.4f}")
-    print(f"F1 Medio (Moda): {f1_mode:.4f}")
-
-    print(f"Media vicini normalizzata (Mean): {media_vicini_mean:.4f} | Media altri normalizzata(Mean):  {media_altri_mean:.4f}")
-    print(f"Media vicini normalizzata (Mode): {media_vicini_mode:.4f} | Media altri normalizzata(Mode):  {media_altri_mode:.4f}")
-
-    print("\nDeviazione standard media per ogni componente:")
-    print(mean_std_devs_per_component)
-
-    print("\nDeviazione standard media per ciascun 'True Label' distinto:")
-    for label, mean_std in mean_std_dev_per_class.items():
-        print(f"True Label {label}: Media deviazione standard = {mean_std:.4f}")
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1045,18 +695,29 @@ def analyze_damage_levels(csv_file_name):
 ## Main
 """
 
+eigenpairs = "eigenpairs_l25.npz"
+
+
+eigenvalues, eigenvectors = load_eigenpairs(eigenpairs)
+
+print("Shape autovalori:", eigenvalues.shape)       # Es. (10,)
+print("Shape autovettori:", eigenvectors.shape)     # Es. (n_points, 10)
+print("Primi 16 autovalori:", eigenvalues[:16])
+
+
+
 # Indice casuale per selezionare un campione dal dataset Z
 idx = np.random.randint(0, Z_test.shape[0]) 
 
 # Estrai le colonne di media e log-varianza per il campione selezionato
-z_mean = Z_test[['mean_0','mean_1','mean_2','mean_3','mean_4','mean_5','mean_6','mean_7']].to_numpy()  # Estrai le colonne delle medie
-z_log_var = Z_test[['var_0','var_1','var_2','var_3','var_4','var_5','var_6','var_7']].to_numpy()  # Estrai le colonne delle log-varianze
+z_mean = Z_test[['mean_0','mean_1','mean_2','mean_3','mean_4','mean_5','mean_6','mean_7','mean_8','mean_9','mean_10','mean_11','mean_12','mean_13','mean_14','mean_15', 'mean_16','mean_17','mean_18','mean_19']].to_numpy() #,'mean_20','mean_21','mean_22','mean_23']].to_numpy() #,'mean_24','mean_25','mean_26','mean_27', 'mean_28','mean_29']].to_numpy()  # Estrai le colonne delle medie
+z_log_var = Z_test[['var_0','var_1','var_2','var_3','var_4','var_5','var_6','var_7','var_8','var_9','var_10','var_11','var_12','var_13','var_14','var_15','var_16','var_17','var_18','var_19']].to_numpy() #,'var_20','var_21','var_22','var_23','var_24','var_25','var_26','var_27','var_28','var_29']].to_numpy()  # Estrai le colonne delle log-varianze
 # z_mean = Z_test[['mean_0','mean_1','mean_2','mean_3']].to_numpy()  # Estrai le colonne delle medie
 # z_log_var = Z_test[['var_0','var_1','var_2','var_3']].to_numpy()
 
 
 # Definisci il numero di iterazioni per MCMC
-n_iter = 20000  
+n_iter = 40000  
 
 # Esegui la classificazione con PyMC usando il vettore continuo
 # Assicurati di passare la riga completa di medie e varianze per il campione selezionato
@@ -1092,12 +753,12 @@ print(f"Vero label: {true_label}")
 
 
 # Visualizzazione dei risultati con istogrammi
-num_labels = true_label.shape[0]
+num_labels = n_params
 plt.figure(figsize=(15, 10))
 
 
 for i in range(num_labels):
-    plt.subplot(2, 2, i + 1)  # Crea una griglia 
+    plt.subplot(4, 4, i + 1)  # Crea una griglia 
     plt.hist(accepted_labels[i, :], bins=100, alpha=0.7, color='blue', edgecolor='black', range=(-5,5))
     plt.title(f'Class {i + 1}\nTrue label: {true_label[i]:.2f}',fontsize=16)
     plt.xlabel('Valore',fontsize=14)
@@ -1128,6 +789,10 @@ plt.ylabel('Parameter Value')
 plt.title('MCMC Trace for Selected Label Vector Components')
 plt.legend()
 plt.show()
+
+
+compute_field_difference(true_label, label_estimate_mean, label_estimate_mode, eigenpairs)
+
 
 
 

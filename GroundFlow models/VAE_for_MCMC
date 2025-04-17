@@ -32,83 +32,222 @@ from sklearn.decomposition import PCA
 # Specify the example you are dealing with
 esempio = 'DARCY_FRAME_DT'
 # Training and Testing data
-path_data_train   = '../DataGenerationDarcy/data/data_train'
-path_data_test   = '../DataGenerationDarcy/data/data_test'
+path_data_train   = '../DataGenerationDarcy/data/data_train_l25_kl16_7x7'
+path_data_test   = '../DataGenerationDarcy/data/data_test_l25_kl16_7x7'
 # Saving model
 path_save       = "models/"
 #Position of mean and std. deviation
 path_restore  = '../DataGenerationDarcy/data/'
 
-seq_len = 36 #25 
-n_params = 4 #6 #9
+seq_len = 49 #81 #36 #25 
+n_params = 16 #12 #10
 
 # lambdas = np.array([3.86, 3.14, 3.14, 2.55, 2.23, 2.23])  #For lam=0.10
+# lambdas = np.array([4.86, 3.75, 3.75, 2.89, 2.44, 2.44, 1.88, 1.88, 1.35, 1.35, 1.23, 1.04, 1.04, 0.68, 0.68, 0.64, 0.64, 0.495, 0.495, 0.376, 0.322, 0.322, 0.264, 0.264])  #For lam=0.16
 # lambdas = np.array([5.93, 4.32, 4.32, 3.15, 2.57, 2.57])  #For lam=0.18
-# lambdas = np.array([0.0, 0.0, 0.0, 0.0])   #For 3x3 case
+# lambdas = np.array([7.03, 4.83, 4.83, 3.32, 2.62, 2.62, 1.80, 1.80, 1.13, 1.13]) #, 0.974, 0.780, 0.780, 0.422, 0.422, 0.402])  #For lam=0.20
+lambdas = np.array([9.87, 5.81, 5.81, 3.42, 2.46, 2.46, 1.45, 1.45, 0.782, 0.782, 0.615, 0.460, 0.460, 0.195, 0.195, 0.194])  #For lam=0.25
 # lambdas = np.array([17.8, 6.40, 6.40, 2.31, 1.33, 1.33])  #For lam=0.40
-lambdas = np.array([17.8, 6.40, 6.40, 2.31])  #For lam=0.40
+# lambdas = np.array([17.8, 6.40, 6.40, 2.31])  #For lam=0.40
 
 def RMS(signal):
     return np.sqrt(np.mean(signal**2))
 
 
-def read_data(path_data, added_SNR): 
+#STANDARD NORM. PER FEATURE (SAME BRIDGE CASE)
+# def read_data(path_data, added_SNR): 
 
-    #Import labels (coeff of KL of the field)
+#     #Import labels (coeff of KL of the field)
+#     labels_path = path_data + '/samples_h1_60.csv'
+#     labels = np.genfromtxt(labels_path, delimiter=',', dtype=float)
+
+#     # Seleziona solo le prime 4 colonne
+#     labels = labels[:, :n_params]
+
+#     # scaling_factors = np.array([5.93, 4.32, 4.32, 3.15, 2.57, 2.57])  # Peso per ogni elemento del label
+#     # scaling_factors = np.array([17.8, 6.40, 6.40, 2.31, 1.33, 1.33])
+#     # scaled_labels = labels * scaling_factors  # Moltiplicazione elemento per elemento
+
+#     #Import simulation data from sensors
+#     sensors_path = path_data + '/sensorsdata_h1_60.csv'
+#     sensors_data = np.genfromtxt(sensors_path, delimiter=',', dtype=float)
+
+#     N_ist = len(labels)  
+
+#     # Creiamo la struttura per i segnali
+#     X = sensors_data.copy()  # Prendi direttamente i dati dai sensori
+#     X_noise = np.zeros_like(X)  # Stessa dimensione di X
+
+#     if path_data == path_data_train:
+
+#         #Apply noise
+#         for i in range(N_ist):
+#             rms_signal = np.sqrt(np.mean(X[i, :] ** 2))  
+#             dev_std = rms_signal / np.sqrt(added_SNR)  
+#             noise = st.norm.rvs(0, dev_std, size=X.shape[1])  
+#             X_noise[i, :] = X[i, :] + noise  
+
+#         # Calcola e salva le statistiche per la normalizzazione
+#         data_mean = np.mean(X_noise, axis=0)
+#         data_std = np.std(X_noise, axis=0)
+
+#         np.save(path_restore + '/data_mean.npy', data_mean)
+#         np.save(path_restore + '/data_std.npy', data_std)
+
+#     else:
+
+#         #Apply noise
+#         for i in range(N_ist):
+#             rms_signal = np.sqrt(np.mean(X[i, :] ** 2))  
+#             dev_std = rms_signal / np.sqrt(added_SNR)  
+#             noise = st.norm.rvs(0, dev_std, size=X.shape[1])  
+#             X_noise[i, :] = X[i, :] + noise  
+
+#         # Load mean and std_dev used to normalize training set
+#         data_mean = np.load(path_restore + '/data_mean.npy')
+#         data_std = np.load(path_restore + '/data_std.npy')
+
+#     # Normalizzazione sicura: evitare divisioni per zero
+#     data_std[data_std == 0] = 1  # Evita divisioni per 0
+#     X_noise = (X_noise - data_mean) / data_std
+
+#     return X_noise, labels, N_ist
+
+
+#MIN-MAX NORM. PER FEATURE
+# def read_data(path_data, added_SNR): 
+#     # Import labels
+#     labels_path = path_data + '/samples_h1_60.csv'
+#     labels = np.genfromtxt(labels_path, delimiter=',', dtype=float)
+
+#     labels = labels[:, :n_params]  # Select first `n_params` columns
+
+#     # Import sensor data
+#     sensors_path = path_data + '/sensorsdata_h1_60.csv'
+#     sensors_data = np.genfromtxt(sensors_path, delimiter=',', dtype=float)
+
+#     N_ist = len(labels)  
+
+#     # Copy sensor data
+#     X = sensors_data.copy()
+#     X_noise = np.zeros_like(X)
+
+#     if path_data == path_data_train:
+#         # Apply noise to training data
+#         for i in range(N_ist):
+#             rms_signal = np.sqrt(np.mean(X[i, :] ** 2))  
+#             dev_std = rms_signal / np.sqrt(added_SNR)  
+#             noise = st.norm.rvs(0, dev_std, size=X.shape[1])  
+#             X_noise[i, :] = X[i, :] + noise  
+
+#         # Compute min and max for Min-Max Normalization
+#         X_min = np.min(X_noise, axis=0)
+#         X_max = np.max(X_noise, axis=0)
+
+#         print("X_min:", X_min)
+#         print("X_max:", X_max)
+
+#         # Save them for later use in test normalization
+#         np.save(path_restore + '/X_min.npy', X_min)
+#         np.save(path_restore + '/X_max.npy', X_max)
+
+#     else:
+#         # Apply noise to test data
+#         for i in range(N_ist):
+#             rms_signal = np.sqrt(np.mean(X[i, :] ** 2))  
+#             dev_std = rms_signal / np.sqrt(added_SNR)  
+#             noise = st.norm.rvs(0, dev_std, size=X.shape[1])  
+#             X_noise[i, :] = X[i, :] + noise  
+
+#         # Load stored min and max from training set
+#         X_min = np.load(path_restore + '/X_min.npy')
+#         X_max = np.load(path_restore + '/X_max.npy')
+
+#         print("Loaded X_min:", X_min)
+#         print("Loaded X_max:", X_max)
+
+#     # Avoid division by zero
+#     X_range = X_max - X_min
+#     X_range[X_range == 0] = 1  # Prevent division by zero
+
+#     # Apply Min-Max Normalization
+#     X_noise = (X_noise - X_min) / X_range
+
+#     return X_noise, labels, N_ist
+
+
+#MIN-MAX NORMALIZATION
+def read_data(path_data, added_SNR): 
+    # Import labels
     labels_path = path_data + '/samples_h1_60.csv'
     labels = np.genfromtxt(labels_path, delimiter=',', dtype=float)
 
-    # Seleziona solo le prime 4 colonne
-    labels = labels[:, :n_params]
+    labels = labels[:, :n_params]  # Seleziona le prime `n_params` colonne
 
-    # scaling_factors = np.array([5.93, 4.32, 4.32, 3.15, 2.57, 2.57])  # Peso per ogni elemento del label
-    # scaling_factors = np.array([17.8, 6.40, 6.40, 2.31, 1.33, 1.33])
-    # scaled_labels = labels * scaling_factors  # Moltiplicazione elemento per elemento
-
-    #Import simulation data from sensors
+    # Import sensor data
     sensors_path = path_data + '/sensorsdata_h1_60.csv'
     sensors_data = np.genfromtxt(sensors_path, delimiter=',', dtype=float)
 
     N_ist = len(labels)  
 
-    # Creiamo la struttura per i segnali
-    X = sensors_data.copy()  # Prendi direttamente i dati dai sensori
-    X_noise = np.zeros_like(X)  # Stessa dimensione di X
+    # Copia i dati dei sensori
+    X = sensors_data.copy()
+    X_noise = np.zeros_like(X)
 
     if path_data == path_data_train:
-
-        #Apply noise
+        # Applica rumore ai dati di training
         for i in range(N_ist):
             rms_signal = np.sqrt(np.mean(X[i, :] ** 2))  
             dev_std = rms_signal / np.sqrt(added_SNR)  
             noise = st.norm.rvs(0, dev_std, size=X.shape[1])  
             X_noise[i, :] = X[i, :] + noise  
 
-        # Calcola e salva le statistiche per la normalizzazione
-        data_mean = np.mean(X_noise, axis=0)
-        data_std = np.std(X_noise, axis=0)
+            X_noise = np.maximum(X_noise, 0)
 
-        np.save(path_restore + '/data_mean.npy', data_mean)
-        np.save(path_restore + '/data_std.npy', data_std)
+        X_noise = X #STO TOGLIENDO RUMORE
+
+        # Calcola un solo valore minimo e massimo per tutto il dataset
+        X_min = np.min(X_noise)  # Singolo valore minimo
+        X_max = np.max(X_noise)  # Singolo valore massimo
+
+        # Stampa i valori per controllo
+        print(f"X_min (globale): {X_min}")
+        print(f"X_max (globale): {X_max}")
+
+        # Salva i valori globali per il test
+        np.save(path_restore + '/X_min.npy', X_min)
+        np.save(path_restore + '/X_max.npy', X_max)
 
     else:
-
-        #Apply noise
+        # Applica rumore ai dati di test
         for i in range(N_ist):
             rms_signal = np.sqrt(np.mean(X[i, :] ** 2))  
             dev_std = rms_signal / np.sqrt(added_SNR)  
             noise = st.norm.rvs(0, dev_std, size=X.shape[1])  
-            X_noise[i, :] = X[i, :] + noise  
+            X_noise[i, :] = X[i, :] + noise
 
-        # Load mean and std_dev used to normalize training set
-        data_mean = np.load(path_restore + '/data_mean.npy')
-        data_std = np.load(path_restore + '/data_std.npy')
+            X_noise = np.maximum(X_noise, 0) 
 
-    # Normalizzazione sicura: evitare divisioni per zero
-    data_std[data_std == 0] = 1  # Evita divisioni per 0
-    X_noise = (X_noise - data_mean) / data_std
+        X_noise = X #STO TOGLIENDO RUMORE
+
+        # Carica i valori globali di min e max dal training set
+        X_min = np.load(path_restore + '/X_min.npy')
+        X_max = np.load(path_restore + '/X_max.npy')
+
+        # Stampa per verifica
+        print(f"Loaded X_min (globale): {X_min}")
+        print(f"Loaded X_max (globale): {X_max}")
+
+    # Evita divisioni per zero
+    X_range = X_max - X_min
+    if X_range == 0:
+        X_range = 1  # Previene la divisione per zero
+
+    # Normalizzazione Min-Max globale
+    X_noise = (X_noise - X_min) / X_range
 
     return X_noise, labels, N_ist
+
 
 
 
@@ -137,7 +276,7 @@ class Sampling(layers.Layer):
 
 
 
-latent_dim = 8
+latent_dim = 20 #16
 
 # Hyperparameters
 validation_split = 0.20
@@ -150,15 +289,15 @@ ratio_to_stop = 0.05
 
 
 
-filter_1      = 32;   filter_2      = 64;   filter_3      = 32
-kernel_size_1 = 3;   kernel_size_2 =  2;   kernel_size_3 = 2
+filter_1      = 16;   filter_2      = 32;   filter_3      = 16
+kernel_size_1 = 3;   kernel_size_2 =  3;   kernel_size_3 = 3
 neurons_4 = 32
 neurons_5 = 16
 attivaz_conv = 'tanh'
 attivaz_mlp = 'tanh'
 k_reg = 1e-3
 b_reg = 1e-3
-rate_drop = 0.3 #0.2
+rate_drop = 0.2
 
 """
 ## Build the encoder 
@@ -170,31 +309,23 @@ encoder_inputs = layers.Input(shape=(seq_len,), name='Convolutional_inputs')
 # Reshape per trasformare il vettore di 25 elementi in una griglia 3x3
 x = layers.Reshape((int(np.sqrt(seq_len)), int(np.sqrt(seq_len)), 1))(encoder_inputs)  # 5x5 è la forma della griglia, 1 è il numero di canali
 
-x = layers.Conv2D(filters=filter_1, kernel_size=(kernel_size_1, kernel_size_1), kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=None, padding='same', name='Conv_1')(x)
-x = layers.BatchNormalization()(x)  # Normalizzazione del batch
-x = layers.Activation('tanh')(x)  # Applica l'attivazione dopo la BatchNorm
+x = layers.Conv2D(filters=filter_1, kernel_size=(kernel_size_1, kernel_size_1), kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, padding='same', name='Conv_1')(x)
 x = layers.Dropout(rate=rate_drop)(x) 
 
 # Secondo layer convoluzionale 2D
-x = layers.Conv2D(filters=filter_2, kernel_size=(kernel_size_2, kernel_size_2), kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=None, padding='same', name='Conv_2')(x)
-x = layers.BatchNormalization()(x)  # Normalizzazione del batch
-x = layers.Activation('tanh')(x)  # Applica l'attivazione dopo la BatchNorm
+x = layers.Conv2D(filters=filter_2, kernel_size=(kernel_size_2, kernel_size_2), kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, padding='same', name='Conv_2')(x)
 x = layers.Dropout(rate=rate_drop)(x) 
 
 # Terzo layer convoluzionale 2D
-x = layers.Conv2D(filters=filter_3, kernel_size=(kernel_size_3, kernel_size_3), kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=None, padding='same', name='Conv_3')(x)
-x = layers.BatchNormalization()(x)  # Normalizzazione del batch
-x = layers.Activation('tanh')(x)  # Applica l'attivazione dopo la BatchNorm
+x = layers.Conv2D(filters=filter_3, kernel_size=(kernel_size_3, kernel_size_3), kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, padding='same', name='Conv_3')(x)
 x = layers.Dropout(rate=rate_drop)(x) 
 
 # Flatten dei dati per connettersi ai layer fully connected
 x = layers.Flatten()(x)
 
 # Dense layers per l'encoder
-x = layers.Dense(units=neurons_4, activation=None, kernel_regularizer=regularizers.l2(k_reg), 
+x = layers.Dense(units=neurons_4, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
                  bias_regularizer=regularizers.l2(b_reg), name='Dense_1')(x)
-x = layers.BatchNormalization()(x)  # Normalizzazione del batch
-x = layers.Activation('relu')(x)  # Applica l'attivazione dopo la BatchNorm
 x = layers.Dropout(rate=rate_drop)(x) 
 # x = layers.Dense(units=neurons_5, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
 #                  bias_regularizer=regularizers.l2(b_reg), name='Dense_2')(x)
@@ -224,7 +355,7 @@ latent_inputs = layers.Input(shape=(latent_dim,), name='Latent_inputs')
 # Espansione del vettore latente in una forma adatta per il decoder (Dense + Reshape)
 x = layers.Dense(units=neurons_4, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
                  bias_regularizer=regularizers.l2(b_reg), name='Dense_1_decoder')(latent_inputs)
-x = layers.Dense(units=6*6*filter_3, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
+x = layers.Dense(units=int(np.sqrt(seq_len))*int(np.sqrt(seq_len))*filter_3, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
                  bias_regularizer=regularizers.l2(b_reg), name='Dense_2_decoder')(x)
 
 # Reshape per ottenere una griglia 
@@ -232,21 +363,15 @@ x = layers.Dense(units=6*6*filter_3, activation=attivaz_mlp, kernel_regularizer=
 x = layers.Reshape((int(np.sqrt(seq_len)), int(np.sqrt(seq_len)), filter_3))(x)
 
 # Primo layer di convoluzione trasposta
-x = layers.Conv2DTranspose(filters=filter_2, kernel_size=(kernel_size_3, kernel_size_3), padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=None, name='Conv2DTranspose_1')(x)
-x = layers.BatchNormalization()(x)  # Normalizzazione del batch
-x = layers.Activation('relu')(x)  # Applica l'attivazione dopo la BatchNorm
+x = layers.Conv2DTranspose(filters=filter_2, kernel_size=(kernel_size_3, kernel_size_3), padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv2DTranspose_1')(x)
 x = layers.Dropout(rate=rate_drop)(x) 
 
 # Secondo layer di convoluzione trasposta
-x = layers.Conv2DTranspose(filters=filter_1, kernel_size=(kernel_size_2, kernel_size_2), padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=None, name='Conv2DTranspose_2')(x)
-x = layers.BatchNormalization()(x)  # Normalizzazione del batch
-x = layers.Activation('relu')(x)  # Applica l'attivazione dopo la BatchNorm
+x = layers.Conv2DTranspose(filters=filter_1, kernel_size=(kernel_size_2, kernel_size_2), padding='same', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), activation=attivaz_conv, name='Conv2DTranspose_2')(x)
 x = layers.Dropout(rate=rate_drop)(x) 
 
 # Terzo layer di convoluzione trasposta
-x = layers.Conv2DTranspose(filters=1, kernel_size=(3, 3), activation=None, padding='same', bias_regularizer=regularizers.l2(b_reg), name='Conv2DTranspose_3')(x)
-x = layers.BatchNormalization()(x)  # Normalizzazione del batch
-x = layers.Activation('relu')(x)  # Applica l'attivazione dopo la BatchNorm
+x = layers.Conv2DTranspose(filters=1, kernel_size=(3, 3), activation=attivaz_conv, padding='same', bias_regularizer=regularizers.l2(b_reg), name='Conv2DTranspose_3')(x)
 x = layers.Dropout(rate=rate_drop)(x) 
 
 # Flatten per convertire il risultato in un vettore
@@ -288,101 +413,6 @@ Dense_output = layers.Dense(n_params, activation='linear', kernel_regularizer=re
 # Definisci il modello
 predictor = keras.Model(latent_inputs_predictor, Dense_output, name='Predictor')
 predictor.summary()
-
-
-
-# # Parametri
-# seq_len = 25  # Numero di elementi nell'input (griglia 5x5)
-# latent_dim = 4  # Dimensione della variabile latente (può essere modificata)
-# neurons_1 = 128  # Numero di neuroni nel primo layer fully connected
-# neurons_2 = 64   # Numero di neuroni nel secondo layer fully connected
-# neurons_3 = 32   # Numero di neuroni nel terzo layer fully connected
-# k_reg = 1e-3     # Regularization per i pesi
-# b_reg = 1e-3     # Regularization per i bias
-# attivaz_mlp = 'elu'  # Funzione di attivazione
-
-# # Encoder: Input di dimensione (25,) => griglia di sensori (5x5)
-# encoder_inputs = layers.Input(shape=(seq_len,), name='Convolutional_inputs')
-
-# # Primo layer fully connected
-# x = layers.Dense(units=neurons_2, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
-#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_1_encoder')(encoder_inputs)
-# x = layers.BatchNormalization()(x)
-# # Secondo layer fully connected
-# x = layers.Dense(units=neurons_1, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
-#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_2_encoder')(x)
-# x = layers.BatchNormalization()(x)
-
-# # Terzo layer fully connected
-# x = layers.Dense(units=neurons_2, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
-#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_3_encoder')(x)
-# x = layers.BatchNormalization()(x)
-
-# x = layers.Dense(units=neurons_3, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
-#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_4_encoder')(x)
-# x = layers.BatchNormalization()(x)
-
-# # Variabili latenti (media e log varianza per il VAE)
-# z_mean = layers.Dense(latent_dim, activation=None, name='z_mean')(x)
-# z_log_var = layers.Dense(latent_dim, activation=None, name='z_log_var')(x)
-
-# # Campionamento della variabile latente (condivisione della stessa variabile)
-# z = Sampling()([z_mean, z_log_var])
-
-# # Creazione del modello Encoder
-# encoder = keras.Model(encoder_inputs, [z_mean, z_log_var, z], name="encoder")
-# encoder.summary()
-
-
-
-
-# # Decoder: Input dalla variabile latente
-# latent_inputs = layers.Input(shape=(latent_dim,), name='Latent_inputs')
-
-# # Primo layer denso del decoder
-# x = layers.Dense(units=neurons_3, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
-#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_1_decoder')(latent_inputs)
-# x = layers.BatchNormalization()(x)
-
-# # Secondo layer denso del decoder
-# x = layers.Dense(units=neurons_2, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
-#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_2_decoder')(x)
-# x = layers.BatchNormalization()(x)
-
-# # Terzo layer denso del decoder
-# x = layers.Dense(units=neurons_1, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
-#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_3_decoder')(x)
-# x = layers.BatchNormalization()(x)
-
-# x = layers.Dense(units=neurons_2, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), 
-#                  bias_regularizer=regularizers.l2(b_reg), name='Dense_3_encoder')(x)
-# x = layers.BatchNormalization()(x)
-
-# # Layer finale per ricostruire il vettore di output (dimensione seq_len)
-# decoder_outputs = layers.Dense(seq_len, activation=None, name='Final_output')(x)
-
-# # Creazione del modello Decoder
-# decoder = keras.Model(latent_inputs, decoder_outputs, name="Decoder")
-# decoder.summary()
-
-
-
-# latent_inputs_predictor = layers.Input(shape=(latent_dim,), name='Latent_inputs')
-# x = layers.Dense(units=64, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Dense_1')(latent_inputs_predictor)
-# x = layers.BatchNormalization()(x)
-# x = layers.Dense(units=128, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Dense_2')(x)
-# x = layers.BatchNormalization()(x)
-# x = layers.Dense(units=32, activation=attivaz_mlp, kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Dense_3')(x)
-# x = layers.BatchNormalization()(x)
-# # Layer di output del predictor con attivazione lineare
-# Dense_output = layers.Dense(n_params, activation='linear', kernel_regularizer=regularizers.l2(k_reg), bias_regularizer=regularizers.l2(b_reg), name='Dense_3_linear')(x)
-
-# # Definisci il modello
-# predictor = keras.Model(latent_inputs_predictor, Dense_output, name='Predictor')
-# predictor.summary()
-
-
-
 
 
 
@@ -457,9 +487,9 @@ class VAE(keras.Model):
             # Prediction loss
             predictor_loss = self.prediction_loss(true_labels, predictor_preds)
 
-            alfa = 10.0
+            alfa = 4000.0
             beta = 1.0
-            gamma = 0.30
+            gamma = 0.3
             total_loss = alfa * reconstruction_loss + beta * kl_loss + gamma * predictor_loss 
 
 
@@ -501,9 +531,9 @@ class VAE(keras.Model):
         # predictor_loss = tf.reduce_mean(predictor_loss)
         # predictor_loss = tf.cast(predictor_loss, tf.float32)
 
-        alfa = 10.0
+        alfa = 4000.0
         beta = 1.0
-        gamma = 0.30
+        gamma = 0.3
         total_loss = alfa * reconstruction_loss + beta * kl_loss + gamma * predictor_loss
 
         return {
@@ -601,9 +631,6 @@ def plot_label_clusters_3d(vae, data, labels):
     # plt.savefig(os.path.join(output_dir, "label_clusters_tsne_3d.png"))
     # plt.show()
 
-    # Plot using PCA
-    first_coeff = labels[:,0]
-
     # Esegue la PCA 
     pca = PCA(n_components=3)
     z_pca = pca.fit_transform(z_mean)
@@ -628,17 +655,35 @@ def plot_label_clusters_3d(vae, data, labels):
     # plt.savefig(os.path.join(output_dir, "latent_first_coeff_pca_3d.png"))
     # plt.show()
 
+    num_rows = 4
+    num_cols = 4
+
     # Crea il grafico con 9 subplot
-    fig, axes = plt.subplots(2, 2, figsize=(15, 15), subplot_kw={'projection': '3d'})
+    fig, axes = plt.subplots(num_rows, num_cols, figsize=(15, 15), subplot_kw={'projection': '3d'})
 
     # Loop per generare i 4 subplot con colori diversi
-    for i, ax in enumerate(axes.flat):
+    # for i, ax in enumerate(axes.flat):
+    #     scatter = ax.scatter(z_pca[:, 0], z_pca[:, 1], z_pca[:, 2],
+    #                         c=labels[:, i], cmap='jet')
+    #     color_bar = fig.colorbar(scatter, ax=ax, shrink=0.6)
+    #     color_bar.set_label(f'Coeff {i+1}', fontsize=12)
+
+    #     # Setta le etichette degli assi e il titolo
+    #     ax.set_xlabel("PCA[0]", fontsize=10)
+    #     ax.set_ylabel("PCA[1]", fontsize=10)
+    #     ax.set_zlabel("PCA[2]", fontsize=10)
+    #     ax.set_title(f'Color based on Coeff {i+1}', fontsize=12)
+
+    for i in range(n_params):
+        row, col = divmod(i, num_cols)  # Trova la posizione nel grid di subplot
+        ax = axes[row, col]  # Seleziona l'asse corrispondente
+
         scatter = ax.scatter(z_pca[:, 0], z_pca[:, 1], z_pca[:, 2],
                             c=labels[:, i], cmap='jet')
         color_bar = fig.colorbar(scatter, ax=ax, shrink=0.6)
         color_bar.set_label(f'Coeff {i+1}', fontsize=12)
 
-        # Setta le etichette degli assi e il titolo
+        # Etichette e titolo
         ax.set_xlabel("PCA[0]", fontsize=10)
         ax.set_ylabel("PCA[1]", fontsize=10)
         ax.set_zlabel("PCA[2]", fontsize=10)
@@ -659,7 +704,7 @@ def plot_label_clusters_3d(vae, data, labels):
 
 
 
-train_or_predict = 1   # 1: training, 0: predict                                       
+train_or_predict = 0   # 1: training, 0: predict                                       
 
 
 if train_or_predict:
@@ -668,7 +713,7 @@ if train_or_predict:
     ## Model training
     """
 
-    X_train, labels_train, N_ist = read_data(path_data_train, 100)
+    X_train, labels_train, N_ist = read_data(path_data_train, 100000)
 
     print(f"Forma di X_train: {X_train.shape}")
 
@@ -758,9 +803,16 @@ else:
     """
 
     # Caricamento dei dati di test
-    X_test, labels_test, N_ist_test = read_data(path_data_test, 100)
+    X_test, labels_test, N_ist_test = read_data(path_data_test, 100000)
 
     print(f"Forma di X_test: {X_test.shape}")
+
+
+    from scipy.linalg import svd
+    _, singvalues, _ = svd(X_test.T, full_matrices = False)
+    plt.plot(singvalues[1:])
+
+
 
     # Creazione dell'istanza VAE
     vae = VAE(encoder, decoder, predictor)
@@ -788,8 +840,8 @@ else:
     ## Creazione latent dataset di train e test
     """
 
-    X_train, labels_train, N_ist_train = read_data(path_data_train, 100)
-    X_test, labels_test, N_ist_test = read_data(path_data_test, 100)
+    X_train, labels_train, N_ist_train = read_data(path_data_train, 100000)
+    X_test, labels_test, N_ist_test = read_data(path_data_test, 100000)
 
     # Usa l'encoder per ottenere i vettori latenti
     _, _, z_train = vae.encoder.predict(X_train)
@@ -813,8 +865,8 @@ else:
     ## Creazione latent dataset di train e test 2 per mcmc_2
     """
 
-    X_train, labels_train, N_ist_train = read_data(path_data_train, 100)
-    X_test, labels_test, N_ist_test = read_data(path_data_test, 100)
+    # X_train, labels_train, N_ist_train = read_data(path_data_train, 10000)
+    # X_test, labels_test, N_ist_test = read_data(path_data_test, 100000)
 
     # Usa l'encoder per ottenere i vettori latenti (media e varianza)
     z_mean_train, z_log_var_train, _ = vae.encoder.predict(X_train)

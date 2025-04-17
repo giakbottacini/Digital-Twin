@@ -25,8 +25,8 @@ import scipy.stats as st
 # Specify the example you are dealing with
 esempio = 'DARCY_FRAME_DT'
 # Training and Testing data
-path_data_train   = '../DataGenerationDarcy/data/data_train'
-path_data_test   = '../DataGenerationDarcy/data/data_test'
+path_data_train   = '../DataGenerationDarcy/data/data_train_l25_kl16_7x7'
+path_data_test   = '../DataGenerationDarcy/data/data_test_l25_kl16_7x7'
 # Saving model
 path_save       = "models/"
 #Position of mean and std. deviation
@@ -34,12 +34,12 @@ path_restore  = '../DataGenerationDarcy/data/'
 
 path_z = "output_VAE_for_MCMC"
 
-seq_len = 25
-n_params = 4 #6 #9
+seq_len = 49 #81 #49 #36 #25
+n_params = 16 #12 #8
 
 
 
-latent_dim = 8
+latent_dim = 20 #16
 
 
 # ----------------------------------------------------------------------------
@@ -90,26 +90,15 @@ reg = 0.01
 validation_split = 0.20
 batch_size = 32
 n_epochs = 200
-early_stop_epochs=25
+early_stop_epochs=20
 initial_lr = 1e-3
 decay_length = 0.8
 ratio_to_stop = 0.05
 
-filter_1      = 32;   filter_2      = 64;   filter_3      = 32
-kernel_size_1 = 25;   kernel_size_2 =  13;   kernel_size_3 = 7
-neurons_4 = 64
-neurons_5 = 16
-attivaz_conv = 'tanh'
-attivaz_mlp = 'tanh'
-k_reg = 1e-3
-b_reg = 1e-3
-rate_drop = 0.05
 
 
 
-
-
-def Coupling(input_shape=latent_dim, num_params=n_params, reg=0.01, dropout_rate=0.2):
+def Coupling(input_shape=latent_dim, num_params=n_params, reg=0.001, dropout_rate=0.2):
     # Input per il vettore latente Z di dimensione 4
     input_z = layers.Input(shape=(input_shape,), name='Input_Z')
     # Input per il vettore di label condizionale di dimensione num_classes
@@ -165,7 +154,7 @@ class RealNVP(keras.Model):
 
         # Maschere (alterniamo metà delle dimensioni: 2 su 4)
         self.masks = tf.convert_to_tensor(
-            [[0] * 4 + [1] * 4, [1] * 4 + [0] * 4] * (self.num_coupling_layers // 2), dtype=tf.float32
+            [[0] * 10 + [1] * 10, [1] * 10 + [0] * 10] * (self.num_coupling_layers // 2), dtype=tf.float32
         )
 
 
@@ -183,26 +172,55 @@ class RealNVP(keras.Model):
 
 
     # call con struttura iniziale 
-    def call(self, x, y, training=True):  
+    # def call(self, x, y, training=True):  
 
+    #     log_det_inv = 0   
+
+    #     for i in range(self.num_coupling_layers):
+
+    #         mask = tf.reshape(self.masks[i], [1, latent_dim])  # Aggiungi una dimensione batch
+    #         x_masked = x * mask  # Maschera l'input
+    #         reversed_mask = 1 - mask
+    #         s, t = self.layers_list[i]([x_masked, y])
+    #         s *= reversed_mask
+    #         t *= reversed_mask
+
+    #         x = (
+    #             reversed_mask * (x * tf.exp(s) +  t )
+    #             + x_masked
+    #         )
+    #         log_det_inv += tf.reduce_sum(s, axis=1)
+
+    #     return x, log_det_inv
+
+    def call(self, x, y, training=True):  
         log_det_inv = 0   
 
         for i in range(self.num_coupling_layers):
 
-            mask = tf.reshape(self.masks[i], [1, latent_dim])  # Aggiungi una dimensione batch
-            x_masked = x * mask  # Maschera l'input
+            mask = tf.reshape(self.masks[i], [1, latent_dim])  # Shape: [1, dim]
             reversed_mask = 1 - mask
-            s, t = self.layers_list[i]([x_masked, y])
-            s *= reversed_mask
-            t *= reversed_mask
 
-            x = (
-                reversed_mask * (x * tf.exp(s) +  t )
-                + x_masked
-            )
-            log_det_inv += tf.reduce_sum(s, axis=1)
+            # Primo passo: trasforma la parte non mascherata
+            x_masked = x * mask
+            s1, t1 = self.layers_list[i]([x_masked, y])
+            s1 *= reversed_mask
+            t1 *= reversed_mask
+
+            x = reversed_mask * (x * tf.exp(s1) + t1) + x_masked
+            log_det_inv += tf.reduce_sum(s1, axis=1)
+
+            # Secondo passo: trasforma la parte mascherata, ora che x è aggiornato
+            x_masked = x * reversed_mask
+            s2, t2 = self.layers_list[i]([x_masked, y])
+            s2 *= mask
+            t2 *= mask
+
+            x = mask * (x * tf.exp(s2) + t2) + x_masked
+            log_det_inv += tf.reduce_sum(s2, axis=1)
 
         return x, log_det_inv
+
     
 
     def compute_loss(self, x, y):
@@ -299,7 +317,7 @@ class RealNVP(keras.Model):
             log_likelihood = log_likelihood_z + log_det_inv
 
         # Restituisci il risultato scalato come richiesto
-        return 8 * log_likelihood
+        return log_likelihood
 
 
 
@@ -310,7 +328,7 @@ class RealNVP(keras.Model):
 
 
 
-n_coupling_layers = 12       
+n_coupling_layers = 20       
 
 train_or_predict = 0   # 1: training, 0: predict                                       
 
