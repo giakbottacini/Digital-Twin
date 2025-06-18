@@ -24,12 +24,14 @@ def setup_environment():
     n_samples = 40000
     # resolutions = [(60, 60), (30, 30), (20,20), (15, 15)]
     resolutions = [(60,60)]
-    field_mean, field_stdev, lamb_cov = 1, 1, 0.4
-    # field_mean, field_stdev, lamb_cov = 1, 0.2, 0.1  #3x3 case
-    # mkl_values = [64, 64, 64, 64]
-    mkl_values = [64]   #Number of modes (dominant patterns) i generate (higher->higher variability captured)
+    field_mean, field_stdev, lamb_cov = 1, 1, 0.15
+    # field_mean, field_stdev, lamb_cov = 1, 1, 0.25  
+    mkl_values = [32] 
+    # mkl_values = [128]   #Number of modes (dominant patterns) i generate (higher->higher variability captured)
     # x_data = y_data = np.array([0.1, 0.3, 0.5, 0.7, 0.9])  # 5 X 5 grid of sensors
-    x_data = y_data = np.array([0.083, 0.249, 0.415, 0.581, 0.747, 0.913])  # 6 X 6 grid of sensors
+    # x_data = y_data = np.array([0.083, 0.249, 0.415, 0.581, 0.747, 0.913])  # 6 X 6 grid of sensors
+    # x_data = y_data = np.array([0.07, 0.211, 0.353, 0.495, 0.637, 0.78, 0.92])  # 7 X 7 grid of sensors
+    x_data = y_data = np.array([0.056, 0.168, 0.280, 0.392, 0.500, 0.612, 0.725, 0.837, 0.949])  # 9 X 9 grid of sensors
     # x_data = y_data = np.array([0.25, 0.5, 0.75])  # 3 X 3 grid of sensors
     datapoints = np.array(list(product(x_data, y_data)))  #Sensors's coordinates
     
@@ -54,8 +56,12 @@ def solver_data(solver, datapoints, x):
     """
     Run the solver for given input x and return the computed data.
     """
+    # solver.variability_captured()  #To see variability captured by first modes
+
     solver.solve(x)
-    return solver.get_data(datapoints)
+    # return solver.get_data(datapoints)
+    return solver.get_data_mesh()
+    
 
 def generate_samples(mkl_values, n_samples):
     # n_regions = 9
@@ -73,10 +79,24 @@ def generate_solver_data(solvers, solver_key, samples, datapoints, path_prefix):
     """
     n_samples = samples.shape[0]
     solver = solvers[solver_key]
-    data = np.zeros((n_samples, len(datapoints)))
+
+    solver.plot_multiple_realizations_with_sensors()
     
+    # data = np.zeros((n_samples, len(datapoints)))
+    # for i in tqdm(range(n_samples), desc=f"Processing {solver_key} samples"):
+    #     data[i, :] = solver_data(solver, datapoints, samples[i, :])
+
+    data = np.zeros((n_samples, 3721))
+    k_field = np.zeros((n_samples, 3721))
     for i in tqdm(range(n_samples), desc=f"Processing {solver_key} samples"):
-        data[i, :] = solver_data(solver, datapoints, samples[i, :])
+        _, _, data[i, :], _ = solver_data(solver, datapoints, samples[i, :])
+        _, _, _, k_field[i, :] = solver_data(solver, datapoints, samples[i, :])
+
+    coords, _, _, _= solver_data(solver, datapoints, samples[0, :])
+    np.savetxt(f"{path_prefix}/coordinates.csv", coords, delimiter=",")
+
+    _, cells, _, _= solver_data(solver, datapoints, samples[0, :])
+    np.savetxt(f"{path_prefix}/cells.csv", cells, delimiter=",")
 
     # Genera gli indici mescolati
     indices = np.random.permutation(n_samples)
@@ -84,6 +104,7 @@ def generate_solver_data(solvers, solver_key, samples, datapoints, path_prefix):
     # Applica il rimescolamento a samples e data
     samples_shuffled = samples[indices]
     data_shuffled = data[indices]
+    k_field_shuffled = k_field[indices]
     
     # Split data into training and testing sets
     split_idx = int(0.8 * n_samples)
@@ -96,6 +117,9 @@ def generate_solver_data(solvers, solver_key, samples, datapoints, path_prefix):
     np.savetxt(f"{path_prefix}/sensorsdata_train_{solver_key}_60.csv", data_shuffled[:split_idx], delimiter=",")
     np.savetxt(f"{path_prefix}/samples_test_{solver_key}_60.csv", samples_shuffled[split_idx:], delimiter=",")
     np.savetxt(f"{path_prefix}/sensorsdata_test_{solver_key}_60.csv", data_shuffled[split_idx:], delimiter=",")
+
+    np.savetxt(f"{path_prefix}/kfield_train_{solver_key}_60.csv", k_field_shuffled[:split_idx], delimiter=",")
+    np.savetxt(f"{path_prefix}/kfield_test_{solver_key}_60.csv", k_field_shuffled[split_idx:], delimiter=",")
 
 def project_to_pod_basis(coarse_data, n_components=45):
     """
@@ -154,6 +178,8 @@ def print_simulation_parameters(n_samples, resolutions, field_mean, field_stdev,
     print(f"Lambda Covariance: {lamb_cov}")
     print(f"MKL Values: {mkl_values}")
     print("=====================")
+
+
 
 def main():
 

@@ -256,6 +256,48 @@ class GwFlowSolver:
             self.data[i] = self.h(datapoint[0], datapoint[1])
         return self.data
 
+    # from dolfin import vertex_to_dof_map
+
+    # def get_data_mesh(self):
+    #     """
+    #     Return the solution at all mesh vertices, ordered by vertex index.
+    #     """
+    #     v2d = vertex_to_dof_map(self.V)
+    #     coords = self.mesh.coordinates()               # Vertices in mesh order
+    #     h_vec = self.h.vector().get_local()            # Values at DOFs
+    #     data_on_vertices = h_vec[v2d]                  # Values reordered to match vertex indices
+    #     cells = self.mesh.cells()                      # Cell definitions (by vertex indices)
+    #     return coords, cells, data_on_vertices
+    
+
+    from dolfin import vertex_to_dof_map, dof_to_vertex_map
+
+    def get_data_mesh(self):
+        """
+        Return the solution and conductivity at all mesh vertices, ordered by vertex index.
+        """
+        # Mapping DOFs to vertices
+        v2d = vertex_to_dof_map(self.V)
+
+        # Coordinates of mesh vertices
+        coords = self.mesh.coordinates()               # (num_vertices, 2)
+
+        # --- Solution values ---
+        h_vec = self.h.vector().get_local()            # Solution values at DOFs
+        sol_on_vertices = h_vec[v2d]                     # Reordered to match mesh vertex indices
+
+        # --- Conductivity values ---
+        k_vec = self.K.vector().get_local()            # Conductivity values at DOFs
+        k_on_vertices = k_vec[v2d]                     # Reordered to match mesh vertex indices
+
+        # --- Mesh cell definitions (vertex indices) ---
+        cells = self.mesh.cells()                      # Cell connectivity
+
+        return coords, cells, sol_on_vertices, k_on_vertices
+
+
+
+
     def get_outflow(self):
         return assemble(dot(-self.K*grad(self.h), self.n)*self.ds(2)) # This method works without computing the flow first.
 
@@ -264,3 +306,13 @@ class GwFlowSolver:
         # Plot the solution.
         plt.figure(figsize = (12,10))
         p = plot(self.h, cmap = 'magma'); plt.colorbar(p); plt.show()
+
+        plt.colorbar(p)
+        plt.title("Soluzione h")
+
+        # Salva l'immagine
+        plt.savefig("soluzione.png", dpi=300, bbox_inches='tight')  # puoi cambiare nome o formato
+
+        # Mostra l'immagine e blocca finché non viene chiusa
+        plt.show(block=True)
+        plt.close()

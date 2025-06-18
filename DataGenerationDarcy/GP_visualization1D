@@ -1,0 +1,30 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.spatial.distance import cdist
+
+# Define the squared exponential kernel function
+def squared_exponential_kernel(X1, X2, length_scale=0.25):
+    sq_dist = cdist(X1, X2, metric='sqeuclidean')
+    return np.exp(-sq_dist / (2 * length_scale**2))
+
+# Define the domain (input space)
+X = np.linspace(0, 1, 64).reshape(-1, 1)
+
+# Compute mean vector (constant mean = 1)
+mean = np.ones(X.shape[0])
+
+# Compute covariance matrix using the kernel
+K = squared_exponential_kernel(X, X)
+
+# Sample from the multivariate Gaussian
+np.random.seed(42)  # For reproducibility
+samples = np.random.multivariate_normal(mean, K, size=3)  # 3 function realizations
+
+# Plot the realizations
+plt.figure(figsize=(8, 5))
+plt.plot(X, samples.T, lw=2)
+plt.title("Gaussian Process Realizations")
+plt.xlabel("x")
+plt.ylabel("f(x)")
+plt.grid(True)
+plt.show()

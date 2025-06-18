@@ -45,10 +45,13 @@ class RandomProcess:
         eigvals, eigvecs = eigh(self.cov, eigvals = (self.n_points - self.mkl, self.n_points - 1))
         #eigvals, eigvecs = eigsh(self.cov, self.mkl, which = 'LM')
         
-        
         order = np.flip(np.argsort(eigvals))
         self.eigenvalues = eigvals[order]
         self.eigenvectors = eigvecs[:,order]
+
+        # Save eigenvalues and eigenvectors to file
+        np.savez("eigenpairs.npz", eigenvalues=self.eigenvalues, eigenvectors=self.eigenvectors)
+        print(f"Eigenvalues and eigenvectors saved to eigenpairs.npz")
       
     def generate(self, parameters = None):
         
@@ -106,7 +109,7 @@ class RandomProcess:
 
         # Aggiungi i valori numerici dei primi 6 autovalori con gestione delle sovrapposizioni
         last_y = None  # Per tracciare l'ultima posizione Y usata
-        for i in range(min(6, len(self.eigenvalues))):
+        for i in range(min(16, len(self.eigenvalues))):
             y_value = self.eigenvalues[i]
             
             # Se l'etichetta è troppo vicina alla precedente, spostala più in alto
@@ -126,5 +129,40 @@ class RandomProcess:
         # Salva il grafico invece di mostrarlo
         plt.savefig(save_path, bbox_inches='tight')
         # plt.close()  # Chiudi la figura per liberare memoria
+
+
+    def compute_variability(self, num_modes=20):
+        """
+        Compute the variability captured by the first `num_modes` KL modes.
+        
+        Parameters:
+        eigenvalues (np.array): Array of eigenvalues from the KL decomposition.
+        num_modes (int): Number of modes to consider.
+        
+        Returns:
+        float: Variability captured by the first `num_modes` modes.
+        """
+        total_variability = np.sum(self.eigenvalues)
+        captured_variability = np.sum(self.eigenvalues[:num_modes])
+        return captured_variability / total_variability
+
+    def plot_variability(self, max_modes=64):
+        """
+        Plot the variability captured as a function of the number of KL modes taken.
+        
+        Parameters:
+        eigenvalues (np.array): Array of eigenvalues from the KL decomposition.
+        max_modes (int): Maximum number of modes to plot.
+        """
+        modes = np.arange(1, max_modes + 1)
+        captured_variability = [self.compute_variability(num_modes=m) for m in modes]
+        
+        plt.figure(figsize=(8, 5))
+        plt.plot(modes, captured_variability, marker='o', linestyle='-', color='b')
+        plt.xlabel('Number of Modes Taken')
+        plt.ylabel('Captured Variability')
+        plt.title('Captured Variability vs. Number of Modes')
+        plt.grid(True)
+        plt.show()
 
 

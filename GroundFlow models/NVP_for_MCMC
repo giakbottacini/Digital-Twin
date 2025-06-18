@@ -25,8 +25,8 @@ import scipy.stats as st
 # Specify the example you are dealing with
 esempio = 'DARCY_FRAME_DT'
 # Training and Testing data
-path_data_train   = '../DataGenerationDarcy/data/data_train_l25_kl16_7x7'
-path_data_test   = '../DataGenerationDarcy/data/data_test_l25_kl16_7x7'
+path_data_train   = '../DataGenerationDarcy/data/data_train_l25_kl14_9x9'
+path_data_test   = '../DataGenerationDarcy/data/data_test_l25_kl14_9x9'
 # Saving model
 path_save       = "models/"
 #Position of mean and std. deviation
@@ -34,12 +34,12 @@ path_restore  = '../DataGenerationDarcy/data/'
 
 path_z = "output_VAE_for_MCMC"
 
-seq_len = 49 #81 #49 #36 #25
-n_params = 16 #12 #8
+seq_len = 81 #49 #36 #25
+n_params = 14 #12 #16
 
 
 
-latent_dim = 20 #16
+latent_dim = 20
 
 
 # ----------------------------------------------------------------------------
@@ -57,9 +57,6 @@ def read_data(path_data, train):
 
     # Seleziona solo le prime n_params colonne
     labels = labels[:, :n_params]
-
-    # scaling_factors = np.array([5.93, 4.32, 4.32, 3.15])
-    # scaled_labels = labels * scaling_factors
     
     N_ist = len(labels)  
 
@@ -172,54 +169,54 @@ class RealNVP(keras.Model):
 
 
     # call con struttura iniziale 
-    # def call(self, x, y, training=True):  
-
-    #     log_det_inv = 0   
-
-    #     for i in range(self.num_coupling_layers):
-
-    #         mask = tf.reshape(self.masks[i], [1, latent_dim])  # Aggiungi una dimensione batch
-    #         x_masked = x * mask  # Maschera l'input
-    #         reversed_mask = 1 - mask
-    #         s, t = self.layers_list[i]([x_masked, y])
-    #         s *= reversed_mask
-    #         t *= reversed_mask
-
-    #         x = (
-    #             reversed_mask * (x * tf.exp(s) +  t )
-    #             + x_masked
-    #         )
-    #         log_det_inv += tf.reduce_sum(s, axis=1)
-
-    #     return x, log_det_inv
-
     def call(self, x, y, training=True):  
+
         log_det_inv = 0   
 
         for i in range(self.num_coupling_layers):
 
-            mask = tf.reshape(self.masks[i], [1, latent_dim])  # Shape: [1, dim]
+            mask = tf.reshape(self.masks[i], [1, latent_dim])  # Aggiungi una dimensione batch
+            x_masked = x * mask  # Maschera l'input
             reversed_mask = 1 - mask
+            s, t = self.layers_list[i]([x_masked, y])
+            s *= reversed_mask
+            t *= reversed_mask
 
-            # Primo passo: trasforma la parte non mascherata
-            x_masked = x * mask
-            s1, t1 = self.layers_list[i]([x_masked, y])
-            s1 *= reversed_mask
-            t1 *= reversed_mask
-
-            x = reversed_mask * (x * tf.exp(s1) + t1) + x_masked
-            log_det_inv += tf.reduce_sum(s1, axis=1)
-
-            # Secondo passo: trasforma la parte mascherata, ora che x è aggiornato
-            x_masked = x * reversed_mask
-            s2, t2 = self.layers_list[i]([x_masked, y])
-            s2 *= mask
-            t2 *= mask
-
-            x = mask * (x * tf.exp(s2) + t2) + x_masked
-            log_det_inv += tf.reduce_sum(s2, axis=1)
+            x = (
+                reversed_mask * (x * tf.exp(s) +  t )
+                + x_masked
+            )
+            log_det_inv += tf.reduce_sum(s, axis=1)
 
         return x, log_det_inv
+
+    # def call(self, x, y, training=True):  
+    #     log_det_inv = 0   
+
+    #     for i in range(self.num_coupling_layers):
+
+    #         mask = tf.reshape(self.masks[i], [1, latent_dim])  # Shape: [1, dim]
+    #         reversed_mask = 1 - mask
+
+    #         # Primo passo: trasforma la parte non mascherata
+    #         x_masked = x * mask
+    #         s1, t1 = self.layers_list[i]([x_masked, y])
+    #         s1 *= reversed_mask
+    #         t1 *= reversed_mask
+
+    #         x = reversed_mask * (x * tf.exp(s1) + t1) + x_masked
+    #         log_det_inv += tf.reduce_sum(s1, axis=1)
+
+    #         # Secondo passo: trasforma la parte mascherata, ora che x è aggiornato
+    #         x_masked = x * reversed_mask
+    #         s2, t2 = self.layers_list[i]([x_masked, y])
+    #         s2 *= mask
+    #         t2 *= mask
+
+    #         x = mask * (x * tf.exp(s2) + t2) + x_masked
+    #         log_det_inv += tf.reduce_sum(s2, axis=1)
+
+    #     return x, log_det_inv
 
     
 
@@ -328,7 +325,7 @@ class RealNVP(keras.Model):
 
 
 
-n_coupling_layers = 20       
+n_coupling_layers = 30       
 
 train_or_predict = 0   # 1: training, 0: predict                                       
 
@@ -648,11 +645,11 @@ else:
     plt.figure(figsize=(8, 6))
 
     # Istogramma del vettore log_likelihood_train
-    plt.hist(log_likelihood_wrong_np, bins=100, range=(1.5*min(log_likelihood_test_np), max(log_likelihood_test_np)),
+    plt.hist(log_likelihood_wrong_np, bins=100, range=(10*min(log_likelihood_test_np), max(log_likelihood_test_np)),
             alpha=0.9, color='r', label='Wrong')
 
     # Istogramma del vettore log_likelihood_test
-    plt.hist(log_likelihood_test_np, bins=100, range=(1.5*min(log_likelihood_test_np), max(log_likelihood_test_np)),
+    plt.hist(log_likelihood_test_np, bins=100, range=(10*min(log_likelihood_test_np), max(log_likelihood_test_np)),
             alpha=0.8, color='b', label='Right')
 
     # Titolo e etichette
@@ -667,6 +664,34 @@ else:
     plt.savefig(os.path.join(output_dir, "hist_confronto_2.png"))
 
     # Mostra il grafico
+    plt.show()
+
+    # === Primo istogramma: Wrong ===
+    plt.figure(figsize=(8, 6))
+    plt.hist(log_likelihood_wrong_np, bins=100,
+            range=(-3000, max(log_likelihood_wrong_np)),
+            alpha=0.9, color='r', label='Wrong')
+
+    plt.xlabel('Log-likelihood', fontsize=20)
+    plt.ylabel('Frequency', fontsize=20)
+    plt.grid(True)
+    plt.legend(fontsize=18)
+
+    plt.savefig(os.path.join(output_dir, "hist_wrong.png"))
+    plt.show()
+
+    # === Secondo istogramma: Right ===
+    plt.figure(figsize=(8, 6))
+    plt.hist(log_likelihood_test_np, bins=100,
+            range=(min(log_likelihood_test_np), max(log_likelihood_test_np)),
+            alpha=0.8, color='b', label='Right')
+
+    plt.xlabel('Log-likelihood', fontsize=20)
+    plt.ylabel('Frequency', fontsize=20)
+    plt.grid(True)
+    plt.legend(fontsize=18)
+
+    plt.savefig(os.path.join(output_dir, "hist_right.png"))
     plt.show()
 
 

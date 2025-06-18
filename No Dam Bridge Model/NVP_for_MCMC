@@ -644,11 +644,11 @@ else:
     plt.figure(figsize=(8, 6))
 
     # Istogramma del vettore log_likelihood_train
-    plt.hist(log_likelihood_wrong_np, bins=100, range=(-150, max(log_likelihood_wrong_np)),
+    plt.hist(log_likelihood_wrong_np, bins=80, range=(-300, max(log_likelihood_wrong_np)),
             alpha=0.9, color='r', label='Wrong')
 
     # Istogramma del vettore log_likelihood_test
-    plt.hist(log_likelihood_test_np, bins=100, range=(2*min(log_likelihood_test_np), max(log_likelihood_test_np)),
+    plt.hist(log_likelihood_test_np, bins=30, range=(2*min(log_likelihood_test_np), max(log_likelihood_test_np)),
             alpha=0.8, color='b', label='Right')
 
     # Titolo e etichette
